@@ -1,0 +1,11 @@
+# generated / installed artifacts — never committed (the seed regenerates them)
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+dist/
+.env
+.env.*
+
+# operator install workspace, if anyone hydrates inside the checkout
+/teleprompter-workspace/
