@@ -615,114 +615,99 @@ this product** and is **out of scope for done**.
 
 ---
 
-## 10. The roteiro / script-selection real-time swap — FIXED
+## 10. The Markdown script: paste → parse → segments (real-time swap) — FIXED
 
-This is the CEO's recording workflow and the headline feature: **selecting a script piece
-from the roteiro bank modifies the teleprompter content in real time.** There are **two doors**
-into it, and both are done-gating: the **terminal sender tool** (this section) and the
-**controller roteiro panel** (§8.7, clickable parts). Both parse the same **roteiro markdown
-format** (§10.1) and reach every connected display through the same broadcast path — selecting
-a part by ENTER (terminal) or by click (controller) swaps the displayed content live.
+This is the CEO's core flow: the operator **pastes a Markdown script** into the page (§8.1), the
+controller **parses it into segments**, shows them (§8.7), and **clicking a segment — or
+advancing with the §8.4 keys — makes it the current line on every connected display, live.**
+Input is the in-page paste box; there is **no terminal sender** and **no script library**. All
+clients sync through the backend `/api/content` + WS broadcast (the sync door, §4.2/§4.3).
 
-### 10.1 Roteiro markdown format ("banco de gravação")
-A roteiro file is a bank of ad pieces grouped by type. Grammar:
-- Ad header: `# ANUNCIO <n> — "<NAME>" (...)` — opens ad number `<n>`, name `<NAME>`.
-- Section header: `## HOOKS — ...` / `## BODIES — ...` / `## CTAs — ...` — sets the current
-  piece **type**.
-- Piece header: `### <n>.<id>` optionally followed by ` — <subtitle>` (e.g. `### 1.H1`,
-  `### 1.B1 — Sample Body`). The `<id>` is always **`<letters><digits>`** (e.g. `H1`, `B1`,
-  `CTA10`); the **trailing digits** are the in-type sort number (§10.2).
-- Piece text: the lines **starting with `>`** after a piece header (a blockquote). Strip the
-  `>` prefix; a bare `>` line is a **paragraph break** (preserved). A `---` line is ignored.
-  The piece text ends at the next `#`/`##`/`###` header.
+### 10.1 The Markdown script format (the paste format) — FIXED, documented on the page
+One rule the operator learns, shown next to the paste box:
+- **A heading line (`#` / `##` / `###`) = a SECTION label** — it groups the segments beneath it
+  (rendered as a heading in the segments panel). A heading is **not itself a segment**.
+- **Every block of text separated by a BLANK LINE = one SEGMENT** — the unit the operator clicks
+  / advances to, and the text shown on the teleprompter.
 
-### 10.2 Recording order
-Pieces are ordered for recording as: **all HOOKS, then all BODIES, then all CTAs**; within a
-type, by ad number, then by the trailing number in the piece id (`1.H3` → 3). Use a **stable
-sort** so any remaining ties keep source-file order. So a bank with 2 hooks + 1 body + 2 CTAs
-sends in the order H1, H2, B1, CTA1, CTA2.
+**Parse rule (unambiguous):** split the pasted text on blank lines into blocks; **trim** each
+block and drop empties; a block whose first non-space character is `#` is a **section label**
+(strip leading `#`s + the following space for its display name); **every other block is a
+segment**, tagged with the most recent section label as its group. Segments are numbered
+**0-based in document order**. Markdown inside a segment is shown as plain text (no bold/italic
+rendering required).
 
-### 10.3 Sender tool (`send_roteiros.py`) — stdlib only
-- **Usage:** `python3 scripts/send_roteiros.py [path/to/roteiro.md]` — defaults to the
-  bundled `sample-roteiro.md` next to the project root.
-- **Key resolution:** `CONTENT_API_KEY` env var first; else read it from `backend/.env`
-  (`CONTENT_API_KEY=` line, strip quotes). If neither → print a clear error and exit non-zero.
-- **Endpoint:** `TELEPROMPTER_API_URL` env var, default `http://localhost:9000/api/content`.
-- **Flow:** parse → order (§10.2) → print a summary line **`Total de peças: <N>`** plus per-
-  type counts → **send piece 1 immediately** (`POST /api/content` with the piece text and the
-  `X-API-Key`) printing **`✅ Enviado ao teleprompter`** on a 2xx (or an error line otherwise)
-  → then a prompt loop: **ENTER advances** to the next piece (sends it), **`q`** quits, a
-  **number** jumps to that 1-based piece. Each send is a live swap on every display.
-- Stdlib only (`urllib.request`, `re`, `json`, `pathlib`, `os`, `sys`) — no third-party deps.
+Example:
+~~~markdown
+# Intro
+Voce ainda perde tempo decorando o que vai falar?
 
-### 10.4 Bundled sample roteiro (`sample-roteiro.md`) — recreate verbatim
-This doubles as the parser fixture (must parse to **exactly 5 pieces**: 2 hooks, 1 body, 2
-CTAs) and the demo bank. Real ad copy, not test strings. Write this file verbatim:
+E se o roteiro rolasse na tela, no seu ritmo?
 
-```markdown
-# Banco de Gravacao — Sample
+## Corpo
+Cola o roteiro, abre o display no celular, e clica em Iniciar.
 
-> **Total de pecas:** 5 (1 anuncio: 2 hooks + 1 body + 2 CTAs)
-> **Como gravar:** Grave todos os hooks seguidos, depois o body, depois os CTAs.
-> Na edicao, combine qualquer Hook + Body + CTA.
+# CTA
+Link na descricao. Comeca hoje.
+~~~
+→ **4 segments** in 3 sections: Intro → [seg0, seg1], Corpo → [seg2], CTA → [seg3].
 
----
----
+### 10.2 Segment order
+Segments are ordered in **document order** (top-to-bottom as pasted): index 0 is the first
+segment; next/prev (§8.4) and the panel list (§8.7) follow that order. No reordering by type.
 
-# ANUNCIO 1 — "TELEPROMPTER" (Angulo: grave sem decorar)
+### 10.3 No terminal sender (DELETED)
+The old `send_roteiros.py` ENTER-per-take terminal tool is **cut** — do not build it. The page
+**is** the input: paste a script (§8.1) and click a segment / advance with keys (§8.7/§8.4). The
+backend `/api/content` (X-API-Key) door + WS broadcast remain as the 2-device **sync** path and
+are exercised by Verify Layer 1 (§16) — but nothing drives them from a terminal.
 
----
+### 10.4 Bundled sample script (`sample-script.md`) — recreate verbatim
+This doubles as the parser fixture (must parse to **exactly 5 segments** in **3 sections**:
+Intro→2, Corpo→2, CTA→1) and the first-load demo. Real copy (Portuguese, the CEO's filming
+language), not test strings. Write this file verbatim:
 
-## HOOKS — Anuncio 1 (2 variacoes)
-
-### 1.H1
-> Voce ainda perde tempo decorando o que vai falar na frente da camera?
-
-### 1.H2
-> E se o seu roteiro rolasse na tela, no seu ritmo, enquanto voce so olha pra lente?
-
----
-
-## BODIES — Anuncio 1 (1 variacao)
-
-### 1.B1 — Corpo
-> Com o TPFlow voce cola o roteiro, abre o display no celular em cima da camera, e clica em Iniciar Apresentacao. Uma unica vez.
->
-> O texto sobe sozinho, a palavra atual fica em destaque, e se voce se perder e so pausar, voltar a palavra certa, e continuar. A gravacao nao se perde.
-
----
-
-## CTAs — Anuncio 1 (2 variacoes)
-
-### 1.CTA1
-> Cola o seu primeiro roteiro agora e grava o proximo video lendo direto da tela.
-
-### 1.CTA2
-> Link na descricao. Comeca hoje e nunca mais trava no meio de uma gravacao.
-```
-
-### 10.5 First-load sample content (the controller/display open on this)
-The backend seeds `state.content` (and the frontend seeds `teleprompter-content` / the script
-library) with this **real** sample roteiro on first load — **never** an empty box or a test
-string. Use this exact text (Portuguese, the CEO's filming language) as the default
-`Demo — Abertura` script, plus a short `Demo — CTA`:
-
-```text
-Demo — Abertura:
+~~~markdown
+# Intro
 Ola pessoal, bem-vindos a mais um video do canal.
 
 Hoje eu vou te mostrar como gravar os seus videos lendo direto da tela, sem decorar uma unica linha.
 
+# Corpo
 O texto rola no seu ritmo, a palavra atual fica em destaque, e voce so precisa olhar pra camera e falar.
 
-Cola o seu roteiro, clica em Iniciar Apresentacao, e comeca a gravar.
+Se voce se perder, e so pausar, voltar ao segmento certo, e continuar — a gravacao nao se perde.
 
-Demo — CTA:
-Gostou? Entao deixa o like, se inscreve no canal, e me conta nos comentarios qual video voce quer ver a seguir.
-```
+# CTA
+Cola o seu roteiro, clica em Iniciar Apresentacao, e grava o proximo video lendo direto da tela.
+~~~
 
-The `Demo — Abertura` body is the default `content`. (Verify J17 asserts the first-load content
-is this sample, not `This is a text from Daniel!` or an empty textarea.)
+### 10.5 First-load content (the controller/display open on this)
+On first load the **paste box (§8.1) is prefilled with the full §10.4 sample Markdown**, and the
+backend seeds `state.content` with the **first segment** of that sample (`Ola pessoal, bem-vindos
+a mais um video do canal.`) — **never** an empty box or a test string like
+`This is a text from Daniel!`. The segments panel (§8.7) therefore opens showing the 5 parsed
+segments under their 3 sections, with segment 0 current. (Verify asserts first-load content is
+this sample, not the test string or an empty box.)
+
+### 10.6 The "Copy formatting prompt" (format helper) — FIXED text
+The editor's **Copy formatting prompt** button (§8.1, `data-testid="copy-format-prompt"`) copies
+**exactly this text** to the clipboard, so an operator without a properly-formatted script can
+paste it to their AI assistant to convert any raw document into the §10.1 format:
+
+~~~text
+Convert the document below into a teleprompter script in Markdown.
+Rules:
+- Use "#" headings for section titles (for example: Intro, Body, CTA).
+- Put each spoken beat — one sentence or short phrase you would read as a single breath — as its own paragraph, separated by a blank line.
+- Plain Markdown only: headings and paragraphs. No bullet lists, bold, italics, tables, or notes.
+- Output ONLY the formatted script, nothing else.
+
+Document to convert:
+<<< paste your raw text here >>>
+~~~
+
+Clicking the button writes this to the clipboard and shows a brief **"Copied ✓"** confirmation.
 
 ---
 
