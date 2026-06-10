@@ -904,8 +904,10 @@ word-by-word, centered via per-word `scrollIntoView`** + **mirror mode**, §7/§
 tokens / slider styling. **No** calibration panel, **no** `@tsparticles`/`framer-motion`, **no**
 starfield. Then `npm install`.
 
-### Step 4: Roteiro sender + sample (§10)
-Write `scripts/send_roteiros.py` (stdlib, §10.3) and `sample-roteiro.md` verbatim (§10.4).
+### Step 4: Sample script (§10.4) — no terminal sender
+Write `sample-script.md` verbatim (§10.4) — it is the parser fixture (5 segments / 3 sections)
+and the first-load demo. The segment parser is **frontend** (§8.7, the §10.1 rule); there is no
+`send_roteiros.py` (cut, §10.3).
 
 ### Step 5: Start both services (supervised)
 **Reclaim the ports SAFELY first — kill by LISTENING PORT, never by command-string.** A
@@ -927,20 +929,25 @@ Vite). `--host 0.0.0.0` so a phone on the LAN can reach both ports. **When the V
 needs a clean backend restart, restart via `stop_port 9000` (or the saved `.pid`) — never
 `pkill -f` on the service command string.**
 
-### Step 6: Smoke the roteiro flow (one piece)
-`cd "$TP_WORKSPACE" && printf 'q\n' | python3 scripts/send_roteiros.py` → expect `Total de
-peças: 5` and `✅ Enviado ao teleprompter`.
+### Step 6: Smoke the sync door (one segment)
+With the key from `backend/.env`, POST a segment and confirm a live swap:
+```sh
+KEY=$(grep '^CONTENT_API_KEY=' "$TP_WORKSPACE/backend/.env" | cut -d= -f2- | tr -d '"')
+curl -sf -X POST localhost:9000/api/content -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"content":"Smoke segment one."}' >/dev/null && echo "content-API swap OK"
+```
+Expect a 2xx; a wrong key must return 401, unset 503, empty content 422 (§4.2). (The full
+paste→parse→5-segment / click-segment flow is exercised by Verify §16.)
 
 ### Step 7: Operator card
 Print the **network** URLs (so the CEO can run controller and display on **two devices**):
 - Controller (laptop): `http://<lan-or-tailnet-ip>:9001/`
 - Display (phone at camera): `http://<lan-or-tailnet-ip>:9001/?mode=display`
-- Recording from terminal: `python3 scripts/send_roteiros.py [your-roteiro.md]` (ENTER advances
-  takes), **or** click roteiro parts directly in the controller's roteiro panel (§8.7).
-Note the one-click flow: in the controller, **pick/paste a script → Start Presenting** (no
-calibration), and **mirror** with the display's mirror toggle / `M` for a glass rig. Because
-both ports bind `0.0.0.0` and the WS URL is hostname-derived, opening the display URL on a
-second device replicates every controller action live (multi-device, §15/J19).
+- How to record: in the controller, **paste your Markdown script** (or click **Copy formatting
+  prompt** to get one formatted by your AI), **click a segment** to put it on the display, then
+  **Start Presenting** (no calibration). **Mirror** with the display's mirror toggle / `M` for a
+  glass rig. Because both ports bind `0.0.0.0` and the WS URL is hostname-derived, opening the
+  display URL on a second device replicates every controller action live (multi-device, §15).
 
 ---
 
@@ -952,31 +959,36 @@ user-drive** (§16), not by green check-marks. All 7 must hold:
 
 1. **2-DEVICE SYNC.** Two **independent** clients — a CONTROLLER and a DISPLAY-ONLY in separate
    browser contexts on separate origins (two real devices, not two tabs) — stay in lock-step:
-   **every** controller action (content edit, settings, take advance/scrub, roteiro selection)
-   shows on the display **≤ 1000 ms**, via the backend WS (no shared client state).
-2. **SCRIPT-IN.** Paste/type/pick a script on the controller → it appears on the display. The
-   app opens on a **real sample roteiro** (never a placeholder/test string).
-3. **ROTEIRO REAL-TIME.** **Clicking a roteiro PART** on the controller swaps the display
-   content to that part **≤ 1000 ms** and resets it to the top — in parallel with the terminal
-   sender. (`POST /api/content` guards still hold: wrong key → 401, unset → 503.)
+   **every** controller action (paste/edit, settings, segment select, segment advance) shows on
+   the display **≤ 1000 ms**, via the backend WS (no shared client state).
+2. **PASTE-IN → SEGMENTS.** Paste a **Markdown script** (§10.1) into the controller paste box →
+   it parses into the **correct segments** under their section headings (the §10.4 sample → **5
+   segments / 3 sections**), shown in the segments panel; the first segment appears on the
+   display. The app opens on the **real sample script** (never a placeholder/test string), and a
+   **"Copy formatting prompt"** affordance is present and copies the §10.6 text.
+3. **SEGMENT REAL-TIME.** **Clicking a segment** (or advancing with the §8.4 keys) on the
+   controller swaps the display content to that segment **≤ 1000 ms** and resets it to the top.
+   (`POST /api/content` guards still hold: wrong key → 401, unset → 503, empty → 422.)
 4. **PRESENT + READ LEGIBLY — the ORIGINAL word-display model.** One click into the presentation
    view; the **single current word is highlighted** (the cyan→violet **glowing box**, exactly one
    `word-active`) and **advances word-by-word**, kept **centered** via per-word `scrollIntoView`
    (§7.4/§11.2). Every word is legible (plain white; no dim/fade). The font is **large enough to
    read at camera distance**. (NOT a continuous crawl, NOT a fade model — those were inventions.)
-5. **MID-TAKE CONTROL / DRIFT RECOVERY.** When auto-scroll drifts off the speaker, the take is
-   **recoverable, not lost**: pause **keeps your place** (it must NOT jump to 0), scrub
-   back/forward by word/line, the display follows, and resume continues from the corrected word
-   (a play/resume runs the §8.6 countdown, the CEO-original).
-6. **NO DEAD CONTROLS / NO SCAFFOLD.** **Every control does something** (Play/Pause, Reset, Exit,
-   scrub, Speed, Text-size, Countdown, Mirror — no dead buttons); and there are **no scaffold
-   tells** — no starfield, no status/units chrome on the display, no placeholder/bilingual/jargon
-   strings. (The cyan glowing-box active word is the **correct original look**, not a scaffold
-   tell — §11.2.)
-7. **SURVIVES A REAL SESSION.** A sustained recording session — swap several roteiro parts,
-   present, play, scrub repeatedly, change speed/font, mirror — runs with **zero console/page
-   errors**, no crash, no stuck/NaN state, no unbounded drift, the display stays in sync, and
-   the controller stays responsive (can exit back to the editor).
+5. **MID-TAKE CONTROL (no word-bar).** Pause **keeps your place** (it must NOT jump to 0) and
+   resume continues from there after the §8.6 countdown (the CEO-original). Navigation between
+   takes is by **segment** (click a segment, or next/prev keys), **not** a draggable word-scrub
+   bar — that bar is **removed** (§8.3/§8.4); a build that still shows a word-scrub range input
+   FAILS this point.
+6. **NO DEAD CONTROLS / NO SCAFFOLD / NO CUT FEATURES.** **Every control does something**
+   (Play/Pause, Reset, Exit, Speed, Text-size, Countdown, Mirror — no dead buttons, and **no
+   word-scrub bar**); and there are **no scaffold tells** — no starfield, no status/units chrome
+   on the display, no placeholder/jargon strings — **and no script library** (no save/open/
+   rename/delete UI anywhere, §8.2). (The cyan glowing-box active word is the **correct original
+   look**, not a scaffold tell — §11.2.)
+7. **SURVIVES A REAL SESSION.** A sustained recording session — paste a script, click through
+   several segments, present, play, change speed/font, mirror — runs with **zero console/page
+   errors**, no crash, no stuck/NaN state, no unbounded drift, the display stays in sync, and the
+   controller stays responsive (can exit back to the editor).
 
 Idempotent: re-running where it already succeeded re-verifies (reuses `backend/.env`, restarts
 services) instead of breaking state.
