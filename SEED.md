@@ -513,8 +513,16 @@ paste replaces it; nothing is stored or named.
 - **Controller-only controls bar** (the display does NOT show this bar — §8.5). Contains:
   - **Play / Pause** button — label `▶ Play` / `⏸ Pause` / `⏳ Waiting` (waiting = countdown
     or pending scheduled start). Starting playback runs a **countdown** first.
-  - **Reset** button (`↻ Reset`) → position 0, paused.
-  - **Exit** (`✕ Exit`) → returns to the editor / unsets presenting.
+  - **Reset** button (`↻ Reset`) — **ALWAYS jumps to the START, from ANY state.** A click
+    deterministically sets `position = 0` (first word active) **and** `isPlaying = false`,
+    regardless of whether it is currently playing, paused, or already at the start, and emits one
+    `state:update {position: 0, isPlaying: false}` so every display jumps to the top too. **Reset
+    is NOT a pause toggle** — pausing is the separate Play/Pause button (§Space). (CEO bug, card
+    add834d5fd3c: Reset was state-dependent — it paused instead of resetting, a second click did
+    nothing, and it only worked after pressing Play again. Reset must be a pure idempotent
+    jump-to-beginning from every state.)
+  - **NOTE — the Exit button is NOT in this controls bar.** It lives fixed in the **top-right
+    corner** of the presentation view (see the dedicated bullet below).
   - **NO draggable current-word bar.** The old word-scrub range input is **removed** (the CEO
     did not ask for it). Take navigation is by **clicking a segment** (§8.7), not by dragging a
     word slider. Do not render a scrub/progress range input in the presentation controls.
@@ -534,8 +542,15 @@ paste replaces it; nothing is stored or named.
   - **Countdown** segmented control — options **{1, 3, 5}** seconds, default **3**.
   - **Mirror** toggle — flips the reading surface horizontally for glass rigs (§8.5); also
     available here on the controller's presentation view (default off, device-local).
-- **Auto-hide:** while playing / counting down / pending start, the controls slide away and a
-  small grab-handle remains; hovering brings them back.
+- **Exit button — FIXED in the TOP-RIGHT CORNER** (`✕`, `data-testid="exit-btn"`). It is a
+  standalone control pinned to the **top-right corner** of the presentation view (e.g.
+  `position: fixed; top: …; right: …`), **NOT inside the controls bar / menu**, and it stays
+  visible (it is **not** auto-hidden with the controls bar). Clicking it returns to the editor /
+  unsets presenting. (CEO directive, card add834d5fd3c — this regressed after prior feedback:
+  Exit belongs top-right, never buried in the menu.)
+- **Auto-hide:** while playing / counting down / pending start, the controls bar slides away and a
+  small grab-handle remains; hovering brings it back. **The top-right Exit button is exempt — it
+  never auto-hides.**
 - **Entering presentation** (`Start Presenting`): set `isPresenting=true`, `position=0`,
   `isPlaying=false`, force `backgroundColor="#000000"`, `textColor="#ffffff"`, and emit a
   `state:update` with exactly those fields (so the phone display follows into presentation).
@@ -555,7 +570,8 @@ three nodes' self-authored harnesses diverged into 42/41/45):
 | Online/Offline pill | `data-testid="status-pill"` | controller header (§8.1/§8.3) |
 | Play/Pause button | `data-testid="play-toggle"` | presentation (§8.3) |
 | Reset button | `data-testid="reset-btn"` | presentation (§8.3) |
-| Exit button | `data-testid="exit-btn"` | presentation (§8.3) |
+| Exit button (TOP-RIGHT corner, not in the bar) | `data-testid="exit-btn"` | presentation (§8.3) |
+| Countdown overlay (controller AND display) | `data-testid="countdown-overlay"` | presentation + `?mode=display` (§8.6) |
 | Speed slider (`<input type=range>`) | `data-testid="speed-slider"` | presentation (§8.3) |
 | Speed readout (`<rate>×` text) | `data-testid="speed-readout"` | presentation (§8.3) |
 | Text-size slider (`<input type=range>`) | `data-testid="size-slider"` | presentation (§8.3) |
@@ -604,18 +620,38 @@ The display is what the camera films. It shows **only the script** on **solid pu
   mirror is **on**, apply **`transform: scaleX(-1)`** to the scrolling text container
   (horizontal flip, so text reads correctly reflected off teleprompter glass); the background
   stays pure black. State is `display-mirror` localStorage, device-local, never synced.
-- The countdown ring (§8.6) is allowed on the display (a filming cue, not status/jargon).
+- **The countdown (§8.6) MUST render on the display** — it is the filming cue the talent reads
+  at the camera, so it is **required** here (not merely "allowed"). It is the one overlay the
+  display shows besides the script; it is a cue, not status/jargon. (CEO bug, card add834d5fd3c:
+  the countdown was showing only on the controller — it must appear on the display too.)
 - Everything else (text, font math, auto-scroll, word-active focus) is identical to the
   controller's reading surface.
 
-### 8.6 Countdown — pre-roll on every play (the CEO original)
-Pressing Play (when not already playing) with `countdownSeconds > 0` shows a **circular
-countdown** (a ring that depletes) centered over the text, counting whole seconds down to 1, then
-begins the scroll — this fires on **every** play start, including resuming after a pause (the
-CEO-original `togglePlay → startCountdown` behavior; the earlier "immediate mid-take resume" was
-an invented deviation and is discarded). With `countdownSeconds = 0`, start immediately. The
-countdown duration drives the local pre-roll and the `desiredStartMs` sent on `play:start`
-(§4.4).
+### 8.6 Countdown — pre-roll on every play (the CEO original) — FIXED
+Pressing Play (when not already playing) with `countdownSeconds > 0` runs a **pre-roll countdown**
+centered over the text, counting whole seconds **3 → 2 → 1** down to 1, then begins the scroll —
+this fires on **every** play start, including resuming after a pause (the CEO-original
+`togglePlay → startCountdown` behavior; the earlier "immediate mid-take resume" was an invented
+deviation and is discarded). With `countdownSeconds = 0`, start immediately. The countdown
+duration drives the local pre-roll and the `desiredStartMs` sent on `play:start` (§4.4).
+
+**The countdown overlay — match the CEO ORIGINAL exactly (3 fixed properties, card add834d5fd3c):**
+- **Renders on BOTH the controller AND the display.** The countdown is driven from shared state
+  (the play/`desiredStartMs` schedule, §4.4) so **every** connected client — controller and each
+  `?mode=display` — shows the SAME synchronized countdown. A countdown that appears only on the
+  controller is the bug. Give the overlay `data-testid="countdown-overlay"` on every client.
+- **CONTINUOUS animation (NOT a depleting ring/chunk).** The number animates **fluidly** each
+  second — a smooth continuous transition per tick (e.g. the digit scales/fades in→out, or a
+  ring sweeps **continuously**), counting 3→2→1. Do **not** render a stepped "remove a slice of
+  the circle" chunk. Use a CSS animation/transition (computed `animation-name`/`transition` is
+  non-`none`) so each second-tick is a continuous motion.
+- **IN FRONT of the text, with a BLURRED BACKDROP behind the number.** The overlay sits **on top
+  of** the reading text (high stacking — e.g. `z-index` above the words; `elementFromPoint` at the
+  viewport center during countdown returns the overlay/its child, never a `.teleprompter-word`),
+  and behind the number is a **blurred backdrop** element (a `backdrop-filter: blur(...)` panel or
+  a blurred circle) so the digit reads clearly in front of the script. (CEO bug: the counter was
+  rendering BEHIND the text and was invisible; the original had the number in front with a blur
+  behind it.)
 
 ### 8.7 Segments panel — clickable segments (controller; click = set current) — FIXED
 The controller parses **the pasted Markdown script (§8.1 paste box)** into **segments** (§10
@@ -1575,11 +1611,45 @@ async function main() {
   // ---- POINT 4: PRESENT + READ LEGIBLY ----
   await pageA.locator('[data-testid="start-presenting"]').click()
   await pageA.waitForSelector('[data-testid="play-toggle"]')
-  // select the 1s countdown to keep the pre-roll short
-  await pageA.locator('[data-testid="countdown-option"]', { hasText: '1s' }).first().click()
+  // select a 3s countdown so the pre-roll overlay can be sampled on BOTH clients (Point 4b)
+  await pageA.locator('[data-testid="countdown-option"]', { hasText: '3s' }).first().click()
   await sleep(200)
   await pageA.locator('[data-testid="play-toggle"]').click()
-  await sleep(2600) // 1s countdown + ~1.6s playback
+
+  // ---- POINT 4b: COUNTDOWN OVERLAY (CEO regressions, card add834d5fd3c) ----
+  // The pre-roll MUST render on the DISPLAY (?mode=display), sit IN FRONT of the text, have a
+  // blurred backdrop behind the number, animate continuously, and count 3->2->1.
+  const cdProbe = async (page) => {
+    for (let i = 0; i < 30; i++) {
+      const info = await page.evaluate(() => {
+        const el = document.querySelector('[data-testid="countdown-overlay"]')
+        if (!el) return null
+        const all = [el, ...el.querySelectorAll('*')]
+        const cx = Math.round(window.innerWidth / 2), cy = Math.round(window.innerHeight / 2)
+        const top = document.elementFromPoint(cx, cy)
+        const inFront = !!top && (top === el || el.contains(top) || (top.closest && top.closest('[data-testid="countdown-overlay"]') === el))
+        const animated = all.some((n) => { const s = getComputedStyle(n); return (s.animationName && s.animationName !== 'none') || (s.transitionDuration && s.transitionDuration !== '0s') })
+        const hasBlur = all.some((n) => { const s = getComputedStyle(n); return /blur\(/.test(s.backdropFilter || '') || /blur\(/.test(s.webkitBackdropFilter || '') || /blur\(/.test(s.filter || '') })
+        const num = (el.textContent || '').replace(/[^0-9]/g, '')
+        return { present: true, inFront, animated, hasBlur, num }
+      })
+      if (info && info.present) return info
+      await sleep(60)
+    }
+    return null
+  }
+  const cdA = await cdProbe(pageA)
+  const cdB = await cdProbe(pageB)
+  const cdNum1 = cdB ? cdB.num : null
+  await sleep(1000)
+  const cdNum2 = await pageB.evaluate(() => { const el = document.querySelector('[data-testid="countdown-overlay"]'); return el ? (el.textContent || '').replace(/[^0-9]/g, '') : null })
+  check('4b countdown renders on the DISPLAY (not just controller)', !!cdB && cdB.present, `display=${JSON.stringify(cdB)} ctrl=${JSON.stringify(cdA)}`)
+  check('4b countdown is IN FRONT of the text (not behind)', !!cdB && cdB.inFront, `inFront=${cdB && cdB.inFront}`)
+  check('4b countdown has a blurred backdrop behind the number', !!cdB && cdB.hasBlur, `hasBlur=${cdB && cdB.hasBlur}`)
+  check('4b countdown animates continuously (CSS animation/transition)', !!cdB && cdB.animated, `animated=${cdB && cdB.animated}`)
+  check('4b countdown counts down (number decreases 3->2->1)', cdNum1 !== null && cdNum2 !== null && Number(cdNum2) < Number(cdNum1), `n1=${cdNum1} n2=${cdNum2}`)
+
+  await sleep(2600) // remainder of the 3s countdown + ~1.6s playback before sampling word-advance
 
   const dispActiveCount = await activeCount(pageB)
   const idxStart = await activeIndex(pageB)
@@ -1671,11 +1741,41 @@ async function main() {
     JSON.stringify(rangeInfo))
 
   // ---- POINT 6: NO DEAD CONTROLS / NO SCAFFOLD / NO CUT FEATURES ----
-  // (a) Reset -> index 0
+  // (a) Reset = deterministic jump-to-START from ANY state (CEO bug, card add834d5fd3c:
+  //     Reset was state-dependent — it paused instead of resetting, a 2nd click did nothing,
+  //     and only worked after pressing Play again). Drive it from PLAYING, ALREADY-RESET, PAUSED.
+  await pageA.locator('[data-testid="countdown-option"]', { hasText: '1s' }).first().click()
+  await sleep(150)
+  // -- from PLAYING --
+  const lbl6 = (await pageA.textContent('[data-testid="play-toggle"]')).trim()
+  if (!/Pause/.test(lbl6)) { await pageA.locator('[data-testid="play-toggle"]').click() }
+  await sleep(1600) // 1s countdown + advance a few words
+  const idxPlaying6 = await activeIndex(pageA)
   await pageA.locator('[data-testid="reset-btn"]').click()
   await sleep(300)
-  const idxReset = await activeIndex(pageA)
-  check('6a Reset -> index 0', idxReset === 0 || idxReset === null, `idx=${idxReset}`)
+  const idxResetPlaying = await activeIndex(pageA)
+  const lblResetPlaying = (await pageA.textContent('[data-testid="play-toggle"]')).trim()
+  check('6a Reset from PLAYING -> jumps to start (index 0) AND pauses',
+    (idxResetPlaying === 0 || idxResetPlaying === null) && /Play/.test(lblResetPlaying) && (idxPlaying6 || 0) > 0,
+    `playingIdx=${idxPlaying6} afterReset=${idxResetPlaying} label=${lblResetPlaying}`)
+  // -- from ALREADY-RESET (idempotent: a 2nd click must still be at the start, not a broken no-op) --
+  await pageA.locator('[data-testid="reset-btn"]').click()
+  await sleep(200)
+  const idxResetAgain = await activeIndex(pageA)
+  check('6a Reset from ALREADY-RESET -> stays at start (idempotent)',
+    idxResetAgain === 0 || idxResetAgain === null, `idx=${idxResetAgain}`)
+  // -- from PAUSED (play, advance, Space-pause mid-take, then Reset) --
+  await pageA.locator('[data-testid="play-toggle"]').click()
+  await sleep(1600)
+  await pageA.keyboard.press('Space') // pause mid-take
+  await sleep(250)
+  const idxPaused6 = await activeIndex(pageA)
+  await pageA.locator('[data-testid="reset-btn"]').click()
+  await sleep(300)
+  const idxResetPaused = await activeIndex(pageA)
+  check('6a Reset from PAUSED -> jumps to start (index 0)',
+    (idxResetPaused === 0 || idxResetPaused === null) && (idxPaused6 || 0) > 0,
+    `pausedIdx=${idxPaused6} afterReset=${idxResetPaused}`)
   // Mirror -> scaleX(-1)
   await pageA.locator('[data-testid="mirror-btn"]').click()
   await sleep(200)
@@ -1724,6 +1824,17 @@ async function main() {
   const allDeps = { ...pkg.dependencies, ...pkg.devDependencies }
   const banned = Object.keys(allDeps).filter((d) => d.includes('tsparticles') || d.includes('framer-motion'))
   check('6b bundle has no @tsparticles / framer-motion', banned.length === 0, JSON.stringify(banned))
+
+  // (c) Exit button must be in the TOP-RIGHT CORNER (CEO regression, card add834d5fd3c) —
+  //     assert its position BEFORE clicking it.
+  const exitBox = await pageA.evaluate(() => {
+    const el = document.querySelector('[data-testid="exit-btn"]')
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    return { cx: (r.left + r.right) / 2, cy: (r.top + r.bottom) / 2, w: window.innerWidth, h: window.innerHeight }
+  })
+  check('6c Exit button is in the TOP-RIGHT corner (not in the controls bar)',
+    !!exitBox && exitBox.cx > exitBox.w * 0.7 && exitBox.cy < exitBox.h * 0.3, JSON.stringify(exitBox))
 
   // (c) cut features absent — no script library UI anywhere on the editor
   await pageA.locator('[data-testid="exit-btn"]').click()
