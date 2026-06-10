@@ -450,6 +450,18 @@ position reaches the displays). On
 a WS content change that is **not** a take-swap, clamp the index into the new word range and keep
 it (do not reset) — see §3/§6.
 
+**INBOUND SYNC — snap to top on `position == 0`, on EVERY client, even mid-play — FIXED.** When
+ANY client (the controller **and** each `?mode=display`) receives a `state:sync` whose
+**`position === 0`** — a Reset (§8.3), a segment set / prev-next segment (§8.4/§8.7), or any
+take-swap — it **MUST** set its local `currentWordIndex = 0` and re-highlight/center the first
+word **instantly** (`behavior: 'auto'`), **regardless of `isPlaying` or the "client owns position
+during playback" guard.** That ownership guard applies **only** to *non-zero* stale position
+pushes during playback (§4.3); an explicit **`position == 0` ALWAYS wins** and snaps the receiving
+client to the top. (Regression bugs, card add834d5fd3c: Reset left the controller stuck at its
+playing index, and a prev-segment swap left the **display** at index 8 instead of 0 — both are
+this **one** missing inbound-`position:0`-snap rule. This single rule fixes Reset, segment
+navigation, and take-swap on every client; the §8.3 Reset note is the button-specific case of it.)
+
 ---
 
 ## 8. The controller UI + presentation view — FIXED constants
