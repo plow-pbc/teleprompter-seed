@@ -113,8 +113,9 @@ Character traits the rebuild must preserve:
   Markdown script → click a segment (or next/prev keys) → the display swaps to that segment and
   resets to the top.
 - **Recoverable takes.** Auto-scroll paces from a speech profile, but the operator can always
-  take the wheel — pause/resume, scrub by word, jump by line, nudge speed — so a take that
-  drifts off the speaker's pace is **recovered, not lost** (§8.4).
+  take the wheel — pause/resume (pause keeps your place), jump between **segments**, nudge speed
+  — so a take that drifts off the speaker's pace is **recovered, not lost** (§8.4). (There is no
+  word-scrub bar — navigation is by segment, §8.3/§8.4.)
 - **Finished reading surface.** Solid pure-black background (no decorative layers), the
   CEO-original **single highlighted current word** (cyan→violet **glowing box**) advancing
   word-by-word and kept centered via per-word `scrollIntoView` (§7.4/§11.2), a real readable
@@ -224,7 +225,7 @@ Behavior, in order (after the 422 body-validation gate):
 2. **If `X-API-Key` ≠ `CONTENT_API_KEY` → 401** `{"detail":"Invalid API key"}`.
 3. On match: set `state.content = body.content`; **`state.position = 0.0`** (reset to
    beginning — this is a *new take*); **`state.is_playing = false`** (pause). **`state.is_presenting`
-   is left UNCHANGED** — a piece sent while presenting must NOT kick the operator out of the
+   is left UNCHANGED** — a segment swap sent while presenting must NOT kick the operator out of the
    presentation view.
 4. **Broadcast `state:sync`** (full state) to every connected client.
 5. Return **200** `{"success": true, "message": "Content updated. <N> characters. Position
@@ -1211,8 +1212,10 @@ Fix: `rm -rf node_modules && npm install` (never copy `node_modules` across host
   from the presentation view. Load-bearing for J5.
 - **No calibration, ever.** Start Presenting is always enabled; the §5 fixed profile is the
   whole pacing engine. Do not add a mic/STT/Skip-Calibration path.
-- **Drift recovery is real.** Pause → scrub (ArrowLeft/Right, scrub bar, click-a-word) →
-  resume; a paused scrub emits `state:update {position}` and moves the displays (§4.3 seam).
+- **Segment navigation, not word-scrub.** Pause keeps your place; navigate between takes by
+  **segment** (next/prev keys, or click a segment in the panel) → resume. A segment-set emits
+  `state:update {content, isPlaying:false, position:0}` and moves the displays to that segment's
+  top (§4.3 seam). **No draggable word-scrub bar** (removed, §8.3/§8.4).
 
 ## 19. Cleanup
 ```sh
