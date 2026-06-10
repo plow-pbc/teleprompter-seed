@@ -59,12 +59,26 @@ a Layer-1 protocol harness (health; 5-piece roteiro parse; the 401/422/503 conte
 the live `state:sync` contract for piece-load + ENTER-advance; two-client broadcast), both
 self-contained against the build's own `localhost`/LAN — no reference instance.
 
-## Automated verify harness
+## Validation path
 
-[`verify/hydrate-and-verify.sh`](verify/hydrate-and-verify.sh) runs the whole stranger flow in a
-throwaway container (needs Docker + a `claude` CLI with auth): it hands **only `SEED.md`** to a
-fresh blind agent, which **builds** the app from the spec and runs the seed's `## Verify`, then
-prints the seed's final `SEED_RESULT=` line. See the script header for usage.
+Validate this seed only through a real MyPeople substrate:
+
+1. Start from a `SUBSTRATE_READY` seedbed.
+2. Spawn a Claude worker inside that substrate with `mp spawn ... --backend claude`.
+3. Send the worker the same instruction a human would give: read `SEED.md`, execute the seed, and
+   keep the running teleprompter available.
+4. Capture terminal evidence with asciinema and browser evidence from the running product.
+
+Do not validate this seed with `claude -p` or a standalone script harness. A SEED is proven by a
+real agent hydrating it inside the substrate through MyPeople.
+
+## A note on calibration
+
+The controller has an **optional** speed-calibration step. The **canonical, supported path is
+the local default pacing profile** — "Skip Calibration / Use Default Profile" enables Start
+Presenting with no network and is the only path required for "done." An optional external
+speech-to-text integration is described in the seed as a stub contract (behind an unset config
+switch) and is explicitly **cut from the done definition**; the spec details this in `§9`.
 
 ## Provenance
 
