@@ -252,7 +252,7 @@ the current state** as a `state:sync` frame. Then loop reading text frames; each
   `position`** (inline edit keeps the operator's place — §3).
 - `position` → set **only if** present **and** the state is **not currently playing**
   (during playback the client owns position locally; ignore stale position pushes). This is
-  the seam that lets a **paused** controller scrub the displays (drift recovery, §8.4).
+  the seam that lets a **paused** controller move the displays to a new segment/position (§8.4).
 - `fontSizeVh`, `backgroundColor`, `textColor`, `playbackRate`, `speechProfile` → set
   directly when present.
 - `wpm` → if present, set it; **else if** `playbackRate` or `speechProfile` changed this
@@ -369,10 +369,11 @@ engine (§9).
   adopt `isPresenting` from the state (so the phone follows the controller into/out of
   presentation); clamp and store `playbackRate`; update font size / colors / countdown;
   reconcile play state and scroll position (during playback keep local position; when paused
-  adopt the synced position — this is how a paused scrub on the controller moves the display).
+  adopt the synced position — this is how a paused segment-set/position update on the controller
+  moves the display).
 - **Controller emits** partial `state:update`s on: content edit, playbackRate change, font
-  size change, countdown change, manual scrub/jump **while paused** (a `position` update), and
-  on entering/exiting presentation. The display emits nothing (read-only).
+  size change, countdown change, a **segment select** / position jump **while paused** (a
+  `position` update), and on entering/exiting presentation. The display emits nothing (read-only).
 
 ---
 
@@ -428,16 +429,17 @@ continuous pixel crawl and **NOT** a fade/dim model — reproduce it precisely:
   to the new one** — then call
   **`targetWord.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'center' })`** so
   the current word sits at the vertical center of the scroll container. Use **`smooth` while
-  playing** (auto-advance) and **`auto` (instant) while seeking / paused** (scrub, position set,
-  reset). The container is `overflow-y-auto` and scroll-smooth; the per-word `scrollIntoView` is
+  playing** (auto-advance) and **`auto` (instant) while seeking / paused** (segment set, position
+  set, reset). The container is `overflow-y-auto` and scroll-smooth; the per-word `scrollIntoView` is
   what moves the page — words on a line are highlighted in place, and the page scrolls when the
   centered word moves to a new line. **This per-word highlight + scrollIntoView centering is the
   required behavior; do not replace it with a crawl.**
 
-**Manual override (drift recovery — §8.4) shares the same integer index.** Scrubbing/jumping sets
-`currentWordIndex` directly and re-highlights/centers it with **`behavior: 'auto'` (instant)**;
-exactly one `word-active` follows. The controller throttles outgoing `position` `state:update`s
-to **one per 100 ms** (with a trailing emit so the final scrub position reaches the displays). On
+**Manual override (segment nav — §8.4) shares the same integer index.** Selecting a segment /
+jumping sets `currentWordIndex` (to 0 for a new segment) and re-highlights/centers it with
+**`behavior: 'auto'` (instant)**; exactly one `word-active` follows. The controller throttles
+outgoing `position` `state:update`s to **one per 100 ms** (with a trailing emit so the final
+position reaches the displays). On
 a WS content change that is **not** a take-swap, clamp the index into the new word range and keep
 it (do not reset) — see §3/§6.
 
