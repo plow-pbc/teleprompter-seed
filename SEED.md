@@ -250,9 +250,16 @@ the current state** as a `state:sync` frame. Then loop reading text frames; each
 **`state:update` partial-merge rules (apply only fields that are present):**
 - `content`, `isPlaying`, `isPresenting` → set directly. **Setting `content` does NOT change
   `position`** (inline edit keeps the operator's place — §3).
-- `position` → set **only if** present **and** the state is **not currently playing**
-  (during playback the client owns position locally; ignore stale position pushes). This is
-  the seam that lets a **paused** controller move the displays to a new segment/position (§8.4).
+- `position` → apply `isPlaying` **first**, then set `position` **only if** present **and**
+  (the state was **not playing** before this message **OR** this same message sets
+  `isPlaying:false`). During sustained playback the client owns position locally, so a stale
+  position push while playing is ignored — **BUT a take-swap `{content, isPlaying:false,
+  position:0}` sent mid-play MUST still reset to the top**: the same message turning playing
+  OFF unlocks the position write. This is the seam that lets a controller move the displays to
+  a new segment/position from **either paused or playing** (§8.4, §8.7). (Fold: card
+  add834d5fd3c — POINT-5 take-swap-mid-play, surfaced by the pinned uniform Verify on a fresh
+  node; an `{isPlaying:false, position:0}` arriving while `is_playing` was true previously
+  failed to reset, losing the segment swap.)
 - `fontSizeVh`, `backgroundColor`, `textColor`, `playbackRate`, `speechProfile` → set
   directly when present.
 - `wpm` → if present, set it; **else if** `playbackRate` or `speechProfile` changed this
@@ -786,7 +793,14 @@ one `word-active` word. **All other words stay full white (no dim, no fade).** R
 **verbatim** (these are the original absolute values):
 ```css
 .teleprompter-word {
-  transition: all 0.2s ease;
+  /* Animate ONLY the box (background gradient + glow) — NOT color. §16b.4 asserts the
+     EXACT computed color of the active word (rgb(0,212,255)) and every other word
+     (rgb(255,255,255)) at arbitrary sample instants during playback; a `transition: all`
+     interpolates `color` (white↔cyan over 0.2s) so the pinned harness samples a mid-fade
+     value (e.g. rgb(151,237,255)) and FAILS. Keep the visible 0.2s box fade-in; snap color
+     instantly so the asserted absolute colors always hold. (Fold: card add834d5fd3c —
+     the §11.2/§16b.4 contradiction the pinned uniform Verify surfaced on a fresh node.) */
+  transition: background 0.2s ease, box-shadow 0.2s ease;
   padding: 0 4px;
   border-radius: 0.5rem;
 }
