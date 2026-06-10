@@ -3,18 +3,19 @@
 > A self-contained **product-spec "seed"** for **TPFlow Teleprompter** — a local,
 > no-auth, multi-device teleprompter for recording videos: a controller page on the
 > computer drives a read-only display page (a phone at the camera, or any second browser
-> page), and a **roteiro (script bank)** loaded in a terminal sender live-swaps the
-> displayed text **one ENTER per take**.
-> **To build:** hand this file to a coding agent — it builds the backend + frontend +
-> roteiro sender from this spec alone and self-runs the §16 acceptance journeys.
+> page). The operator **pastes a Markdown script** into the controller; it parses into
+> **segments**, and **clicking a segment** (or advancing with the keys) live-swaps the
+> displayed text on every connected client.
+> **To build:** hand this file to a coding agent — it builds the backend + frontend
+> from this spec alone and self-runs the §16 acceptance journeys.
 > **Self-contained & self-verifying.** A blind, zero-context agent — with **no access to
 > any reference implementation** (no original codebase, no golden screenshots, no second
 > app) — must rebuild the product from this spec and pass the seed's own `## Verify`. This
 > file contains **NO application source on purpose**: the data model (§5), the wire
 > contract (§4), the rendering math (§7), the UI constants and design tokens (§8, §11), and
-> the roteiro format (§10) are **fixed and load-bearing** — asserted by **absolute value**,
-> never by diffing a reference app. Everything else (file layout, component split, idiomatic
-> React/FastAPI wiring) is yours to choose.
+> the Markdown script format (§10) are **fixed and load-bearing** — asserted by **absolute
+> value**, never by diffing a reference app. Everything else (file layout, component split,
+> idiomatic React/FastAPI wiring) is yours to choose.
 
 > seed-format: 1
 
@@ -32,8 +33,9 @@
 > has misread this seed.
 
 > **You're an AI agent reading this seed.** Your job: build the **TPFlow Teleprompter** —
-> backend (FastAPI + WebSocket on **:9000**), frontend (Vite + React on **:9001**), and the
-> roteiro sender — from this specification alone, until every §16 acceptance journey passes.
+> backend (FastAPI + WebSocket on **:9000**) and frontend (Vite + React on **:9001**, the
+> paste-Markdown controller + display) — from this specification alone, until every §16
+> acceptance journey passes.
 > Run **`## Steps` Step 0 (autonomous preflight: detect-and-install every dependency)**, then
 > execute every Step in order, then perform `## Verify`. When all Verify evidence is in hand
 > print `SEED_RESULT=DONE`; on an unrecoverable blocker print `BLOCKED_REASON=<short reason>`
@@ -65,15 +67,16 @@
 >
 > **Definition of done.** A fresh machine ends with a running teleprompter: the **controller**
 > at `http://<host>:9001/` shows a green **Online** indicator with **zero frontend env
-> config**, opens on a **real sample roteiro** (not a placeholder/test string), and goes from
-> **paste/pick a script → Start Presenting in ONE click** (no calibration, no gate) into a
-> recording view that **plays, scrolls, highlights the active word, and is recoverable by hand
-> when it drifts**. The **display** at `http://<host>:9001/?mode=display` shows **only the
-> script** on **solid pure black** — no Online pill, no readouts, no units — and follows the
-> controller live. A **roteiro** loaded in the sender pushes a script bank so that **each
-> ENTER live-swaps the displayed text on every connected client, no refresh** — the CEO's
-> proven recording workflow. All of this observable and green in §16; the seed is proven only
-> when a blind rebuild from this spec passes as a **quality product**.
+> config**, opens on a **real sample script** (not a placeholder/test string), and goes from
+> **paste a Markdown script → click a segment → Start Presenting in ONE click** (no calibration,
+> no gate) into a recording view that **plays, scrolls, and highlights the active word**. The
+> **display** at `http://<host>:9001/?mode=display` shows **only the script** on **solid pure
+> black** — no Online pill, no readouts, no units — and follows the controller live. The pasted
+> script parses into **segments**; **clicking a segment** (or advancing with the keys)
+> live-swaps the displayed text on every connected client, no refresh — the CEO's recording
+> workflow. There is **no script library** and **no draggable word-bar**. All of this observable
+> and green in §16; the seed is proven only when a blind rebuild from this spec passes as a
+> **quality product**.
 
 ---
 
@@ -81,36 +84,34 @@
 
 **TPFlow Teleprompter** is the CEO's recording rig, packaged. The CEO records short-form ad
 videos: a phone sits on the camera showing the teleprompter **display**; the laptop runs the
-**controller**; and a **roteiro** (Portuguese for "script"/shooting-script) — a bank of ad
-pieces (hooks, bodies, CTAs) — is loaded so the operator presses **ENTER** once per take and
-the displayed text swaps instantly on the phone. No login, no cloud, no refresh between
-takes.
+**controller**. The operator **pastes a Markdown script** into the controller; it parses into
+**segments**, and **clicking a segment** (or advancing with the keys) swaps the displayed text
+instantly on the phone. No login, no cloud, no refresh between takes.
 
-The product has exactly three moving parts:
+The product has exactly two moving parts:
 
 1. **Backend** — a tiny FastAPI app holding **one shared teleprompter state** in memory and
    broadcasting it over a WebSocket. It is a local recording tool: **no authentication**, all
-   connected clients (controller + every display) share the **same** state.
+   connected clients (controller + every display) share the **same** state. A small content API
+   (`POST /api/content`, X-API-Key) is the sync door clients write through.
 2. **Frontend** — a Vite/React single-page app that renders in one of two modes off a URL
-   query param: **controller** (edits the script, runs the presentation, owns all status &
+   query param: **controller** (the **paste-Markdown box** + segments panel + presentation +
    controls) or **display** (read-only, auto-syncs, lives on the phone, shows **only the
-   script**). The WebSocket URL is **derived from the page's own hostname** — there is no
-   frontend env file, so the phone reaches the backend at the same IP it loaded the page from.
-3. **Roteiro sender** — a stdlib-only Python script that parses the roteiro markdown bank and
-   `POST`s one piece at a time to the backend's content API; each post broadcasts the new
-   text to every display **live**. This is the **script-selection-modifies-content-in-real-
-   time** feature: selecting/advancing a script piece from the roteiro changes what every
-   teleprompter shows, instantly.
+   script**). The controller **parses the pasted Markdown into segments** (§10.1) client-side;
+   clicking a segment pushes its text as the shared content. The WebSocket URL is **derived from
+   the page's own hostname** — no frontend env file, so the phone reaches the backend at the
+   same IP it loaded the page from. (There is **no terminal sender** and **no script library**.)
 
 Character traits the rebuild must preserve:
-- **One shared state, broadcast to all.** Any mutation (controller edit, play/pause, a
-  roteiro `POST`, or a manual scrub) reflects on **every** connected client with no refresh.
+- **One shared state, broadcast to all.** Any mutation (paste/edit, play/pause, a segment
+  select) reflects on **every** connected client with no refresh.
 - **Zero-config display.** The display page derives its backend URL from its own hostname —
   open it on a phone via the LAN IP and it just connects.
-- **One click into recording.** Paste or pick a script → **Start Presenting**. No calibration,
-  no "speed training," no gate. The pacing engine ships preconfigured (§9).
-- **ENTER-per-take roteiro flow.** The recording loop is: phone on camera → run the sender →
-  ENTER advances takes → each ENTER live-swaps the display text and resets scroll position.
+- **One click into recording.** Paste a script → click a segment → **Start Presenting**. No
+  calibration, no "speed training," no gate. The pacing engine ships preconfigured (§9).
+- **Paste → segments → click-to-swap.** The recording loop is: phone on camera → paste the
+  Markdown script → click a segment (or next/prev keys) → the display swaps to that segment and
+  resets to the top.
 - **Recoverable takes.** Auto-scroll paces from a speech profile, but the operator can always
   take the wheel — pause/resume, scrub by word, jump by line, nudge speed — so a take that
   drifts off the speaker's pace is **recovered, not lost** (§8.4).
