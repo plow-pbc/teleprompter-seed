@@ -462,10 +462,25 @@ is **no library, no save/open/delete** — §8.2). Top to bottom:
   with the **§10.5 sample script** (NOT an empty box, NOT a test string like "This is a text
   from Daniel!"); placeholder (only if cleared) `Paste your Markdown script here…`. Editing
   re-parses to segments live (§8.7) and pushes `state:update {content}` so the display follows.
-- **"Copy formatting prompt" button** (`data-testid="copy-format-prompt"`, §10.6) — copies a
-  ready-to-paste prompt to the clipboard that the operator hands to their AI assistant to turn
-  any raw document into this teleprompter's Markdown format. (Pure clipboard; no backend.) A
-  brief "Copied ✓" confirmation on click.
+- **"Copy formatting prompt" button** (`data-testid="copy-format-prompt"`, §10.6) — copies the
+  §10.6 prompt to the clipboard so the operator can hand it to their AI assistant to turn any raw
+  document into this teleprompter's Markdown format. (Pure clipboard; no backend.) **CLIPBOARD
+  MUST WORK OVER PLAIN HTTP (non-secure context) — load-bearing.** This tool is normally opened
+  over an `http://<LAN/tailnet-IP>:9001` origin, which is a **non-secure context** where
+  **`navigator.clipboard` is `undefined`**, so `navigator.clipboard.writeText()` throws. Use a
+  helper that returns a real boolean:
+  - If `navigator.clipboard && window.isSecureContext` → `await navigator.clipboard.writeText(text)`; on throw, fall through.
+  - **Fallback (the common LAN/IP case):** create a hidden read-only `<textarea>` off-screen
+    (`position:fixed; top/left:-9999px`), set its value to the text, `focus()` + `select()` +
+    `setSelectionRange(0, len)`, call `document.execCommand('copy')`, remove the textarea, restore
+    any prior selection, and return whether `execCommand` succeeded.
+  - On any failure return `false`.
+  The click handler sets a `copyState: "idle" | "ok" | "fail"` from the helper's **real return
+  value** and reflects it on the button as **`data-copy-state`**. Show **"Copied ✓"** ONLY when
+  the copy truly succeeded (`ok`); on `fail`, show a **visible error state** (e.g. red
+  "Copy failed — select & copy manually") — **NEVER flash a fake "Copied ✓" when nothing was
+  copied** (the original bug: a swallowed `catch` that still set success). The unselectable label
+  text used elsewhere must not block the textarea selection.
 - **Segments panel** (§8.7) — the pasted script parsed into **clickable segments** (grouped
   under their section headings). **Clicking a segment makes it the current line on every
   connected display, live.** This is the in-page take driver — done-gating (J20).
@@ -708,7 +723,12 @@ Document to convert:
 <<< paste your raw text here >>>
 ~~~
 
-Clicking the button writes this to the clipboard and shows a brief **"Copied ✓"** confirmation.
+Clicking the button writes this to the clipboard via the §8.1 clipboard helper and shows
+**"Copied ✓"** **only on a real, confirmed copy**. Because the tool runs over plain HTTP on a
+LAN/tailnet IP (a **non-secure context**, where `navigator.clipboard` is `undefined`), the helper
+**must** use the hidden-textarea + `document.execCommand('copy')` fallback; if the copy genuinely
+fails it must show a **visible failure**, never a fake success. (This is exactly the bug the CEO
+hit: over `http://<ip>:9001` the button flashed "Copied ✓" while copying nothing.)
 
 ---
 
@@ -1042,7 +1062,10 @@ Exit 0 iff all pass; print enough to debug; finish < 2 min.
 7-point definition. Open the CONTROLLER and the DISPLAY in **two independent browser contexts**
 (Playwright `browser.newContext()` twice → isolated storage) on **separate origins** (controller
 `http://localhost:9001`, display `http://127.0.0.1:9001` or the LAN/tailnet IP) so 2-device sync
-is proven through the backend WS, not shared client state. Then actually USE it: paste a Markdown
+is proven through the backend WS, not shared client state. **The clipboard check (§16b.2b) must
+additionally be driven over a NON-secure `http://<real-IP>:9001` origin (NOT localhost/127.0.0.1),
+because that is the context the operator actually uses and where the clipboard bug lives — a
+localhost-only clipboard check is a false green.** Then actually USE it: paste a Markdown
 script, **click segments**, present, **play and watch the highlighted current word advance
 word-by-word, centered** (the original glowing box), pause/resume, change speed/font, mirror, run
 a sustained session. **A green synthetic check is NOT a pass — the pass is the measured 7-point
@@ -1072,8 +1095,24 @@ holds the §10.5 sample (never `This is a text from Daniel!` or empty), the segm
 **exactly 5** `[data-testid="segment"]` items under **3** `[data-testid="segment-section"]`
 headings, and a `[data-testid="copy-format-prompt"]` button exists. Then paste a fresh small
 script (e.g. `# A\nuno\n\ndois\n\n# B\ntres`) into the box; *assert* the panel re-parses to **3
-segments / 2 sections**. (Clipboard read may be sandboxed; asserting the button exists + click
-doesn't throw is sufficient for the copy-prompt.)
+segments / 2 sections**.
+
+**2b. COPY FORMATTING PROMPT — MUST WORK OVER NON-SECURE http-IP (the CEO's path).** This is a
+mandatory check and it MUST run over the **real served origin the operator uses — an
+`http://<LAN/tailnet-IP>:9001` URL, a NON-secure context — NOT `localhost`/`127.0.0.1`** (those
+are secure contexts where `navigator.clipboard` works and the bug hides → a localhost-only check
+is a **false green** and is INADEQUATE). Grant the context clipboard permissions
+(`clipboard-read`,`clipboard-write`). *Assert all:*
+  - Open the controller at the **http-IP origin**; confirm it is non-secure (`window.isSecureContext === false`). Click `[data-testid="copy-format-prompt"]`.
+  - **The prompt text actually lands on the clipboard:** read the OS clipboard back from a
+    **separate secure page** (`http://localhost:9001`, where `navigator.clipboard.readText()`
+    works) — the OS clipboard is shared across pages in the one browser — and *assert* it equals
+    the §10.6 `FORMAT_PROMPT` **exactly**.
+  - **Success is real:** the button shows `data-copy-state="ok"` and **"Copied ✓"** only because
+    the copy truly succeeded.
+  - **No fake success on failure:** force the fallback to fail (e.g. `page.evaluate(() => { document.execCommand = () => false })` before clicking, on the http-IP page), click again, and
+    *assert* `data-copy-state="fail"` with a **visible error** and **NOT** "Copied ✓", and the
+    clipboard is unchanged. (A handler that flashes "Copied ✓" here is the exact CEO bug — FAIL.)
 
 **3. SEGMENT REAL-TIME.** Click a segment (`[data-testid="segment"]`, e.g. index 2) on the
 controller. *Assert:* B's text becomes that segment's text **≤ 1000 ms** and **resets to the top**
