@@ -34,10 +34,34 @@
 > **You're an AI agent reading this seed.** Your job: build the **TPFlow Teleprompter** —
 > backend (FastAPI + WebSocket on **:9000**), frontend (Vite + React on **:9001**), and the
 > roteiro sender — from this specification alone, until every §16 acceptance journey passes.
-> Run `## Steps` Step 0 (single Interview turn), then execute every Step in order, then
-> perform `## Verify`. When all Verify evidence is in hand print `SEED_RESULT=DONE`; on a
-> blocker print `BLOCKED_REASON=<short reason>` and stop. Do not ask the human anything
-> outside the single Interview turn.
+> Run **`## Steps` Step 0 (autonomous preflight: detect-and-install every dependency)**, then
+> execute every Step in order, then perform `## Verify`. When all Verify evidence is in hand
+> print `SEED_RESULT=DONE`; on an unrecoverable blocker print `BLOCKED_REASON=<short reason>`
+> and stop.
+>
+> **RUN FULLY AUTONOMOUSLY — ZERO HUMAN TURNS, ZERO QUESTIONS, ZERO AD-HOC FIXES.** There is
+> **no interview, no decision menu, no confirmation prompt, no human in the loop.** A fresh
+> substrate executes this seed **start-to-finish on its own** and only ever emits
+> `SEED_RESULT=DONE` or one `BLOCKED_REASON=`. Specifically:
+> - **Install every dependency yourself, unconditionally.** Detect-and-install `uv`, Node ≥18,
+>   and a Layer-2 browser (Playwright Chromium) — and anything else you need — without asking.
+>   If `uv` is missing, run `curl -LsSf https://astral.sh/uv/install.sh | sh` and add
+>   `$HOME/.local/bin` to `PATH`, then continue. Never present options ("install uv? / use
+>   pip?"), never pause for a human to choose — the seed already chose: **install it and move
+>   on.** A missing tool is a step to execute, not a question to ask.
+> - **Never stop to ask "how should I proceed?"** — the Steps and the §16 acceptance bar fully
+>   specify the build. Any pause for a human decision **contaminates the run and fails the
+>   seed.** If you hit something the spec does not cover, pick the choice that satisfies §15/§16
+>   and keep going; do not escalate.
+> - **Do NOT emit AskUserQuestion / confirmation menus — not for scope, not for "submit?", not
+>   for anything.** These exact stalls fail the seed: (a) *"install uv? / use pip?"* → just
+>   install uv; (b) *"build it all now / backend-first / confirm the plan?"* → **build it all
+>   now, in one pass**; (c) *"ready to submit / proceed?"* → there is nothing to confirm, keep
+>   going. This **IS** a "run the install recipe and build to spec" job: treat the whole seed as
+>   one uninterrupted execution from Step 0 through `## Verify`. Do not announce a plan and wait,
+>   do not checkpoint, do not request go/no-go. The only outputs that ever stop you are the final
+>   `SEED_RESULT=DONE` or one `BLOCKED_REASON=`.
+> - Do not ask the human anything, at any point, for any reason.
 >
 > **Definition of done.** A fresh machine ends with a running teleprompter: the **controller**
 > at `http://<host>:9001/` shows a green **Online** indicator with **zero frontend env
@@ -794,24 +818,28 @@ cyan→violet track tint; thumb `18×18px` round, `linear-gradient(135deg,#00d4f
 
 ---
 
-## 12. Inputs (Interview)
+## 12. Inputs (auto-detected & auto-resolved — **NO interview, NO questions**)
 
-Run `detect` for every row; send ONE consolidated Interview message (✓ satisfied, ✗ missing
-tools with their `ask`, ⚠ prior-install state), then run autonomously to `SEED_RESULT=DONE`
-or one `BLOCKED_REASON=`.
+Run `detect` for every row and **immediately AUTO-RESOLVE it yourself** (install / generate /
+default) per the `auto-resolve` column. **Do NOT send an interview message, do NOT ask, do NOT
+present a menu, do NOT wait for a human** — resolve each row in-line and run straight through to
+`SEED_RESULT=DONE` (or one `BLOCKED_REASON=` only if a resolve is genuinely impossible, e.g. no
+network). Every dependency here is **install-if-missing**, unconditionally.
 
-| name | required | default | detect | ask |
-|---|---|---|---|---|
-| `uv` on PATH | yes | none | `command -v uv` | "Astral's uv manages the backend env and Python toolchain (downloads Python ≥3.11 itself). Install: `curl -LsSf https://astral.sh/uv/install.sh \| sh`." |
-| Node.js ≥ 18 + npm | yes | none | `node -e 'process.exit(process.versions.node.split(".")[0]>=18?0:1)'` | "Node 18+ for Vite. macOS: `brew install node`. Debian: NodeSource setup_22.x." |
-| Ports 9000 + 9001 free | yes | none | `! (lsof -i :9000 -i :9001 \| grep -q LISTEN)` | "Backend binds :9000, frontend :9001 (hardcoded contracts). Free them or abort." |
-| `TP_WORKSPACE` | no | `$HOME/teleprompter` | `[ -n "${TP_WORKSPACE:-}" ] \|\| true` | "Build/target dir. Created if missing." |
-| `CONTENT_API_KEY` | yes | generated | `[ -s "$TP_WORKSPACE/backend/.env" ] && grep -q '^CONTENT_API_KEY=..' "$TP_WORKSPACE/backend/.env"` | "Auto-generated at build (`openssl rand -hex 16`), written to `backend/.env` (chmod 600). On re-build, confirm reuse vs reset." |
-| LAN IP (phone display) | no | auto-detected | — | "Only to put the display on a real phone; the seed prints `http://<lan-ip>:9001/?mode=display`. Verify uses local browser pages — no phone needed." |
-| Prior `$TP_WORKSPACE` build | conditional | preserve `.env`, rebuild code | `[ -d "$TP_WORKSPACE" ]` | "A build exists. Default: rebuild source, PRESERVE `backend/.env`, re-verify. Say 'reset' to wipe including the key." |
+| name | detect | auto-resolve (do this, never ask) |
+|---|---|---|
+| `uv` on PATH | `command -v uv` | If missing: `curl -LsSf https://astral.sh/uv/install.sh \| sh`, then `export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"` and re-check. uv manages the backend env + Python ≥3.11 (downloads Python itself). **Install it — do not offer pip/venv as an alternative menu.** |
+| Node.js ≥ 18 + npm | `node -e 'process.exit(process.versions.node.split(".")[0]>=18?0:1)'` | If missing/old: install non-interactively. Debian/Ubuntu: `curl -fsSL https://deb.nodesource.com/setup_22.x \| sudo -E bash - && sudo apt-get install -y nodejs`. macOS: `brew install node`. Then re-check. |
+| Layer-2 browser (Playwright Chromium) | `npx --yes playwright --version` then a chromium presence check | Install it for §16 Layer 2 the way **Step 0** does: the **browser binary** (`npx --yes playwright install chromium`) **AND its system libs** (`sudo npx --yes playwright install-deps chromium`, or an explicit `apt-get install libnss3 …`). **The browser binary ALONE is not enough — bare `playwright install chromium` fails host-deps validation on a minimal container; the system libraries are required and need root (use passwordless sudo).** Do this as part of the run, not "if convenient". Only if Chromium is genuinely uninstallable, record it next to the Layer-1 proof and `BLOCKED_REASON=browser_uninstallable`. |
+| Ports 9000 + 9001 | `lsof -i :9000 -i :9001 \| grep -q LISTEN` | Fixed contracts. If a **prior teleprompter** of this build holds them, reclaim them (stop the old services) and continue. If a foreign process holds them and cannot be freed, `BLOCKED_REASON=port_in_use`. Never ask which to keep. |
+| `TP_WORKSPACE` | `[ -n "${TP_WORKSPACE:-}" ]` | Default to `$HOME/teleprompter`; create if missing. No prompt. |
+| `CONTENT_API_KEY` | `[ -s "$TP_WORKSPACE/backend/.env" ] && grep -q '^CONTENT_API_KEY=..' "$TP_WORKSPACE/backend/.env"` | Auto-generate at build (`openssl rand -hex 16`) → `backend/.env` (chmod 600). On re-build, **reuse the existing key** (never ask reuse-vs-reset). |
+| LAN/tailnet IP (phone display) | auto-detect | Only used to print `http://<ip>:9001/?mode=display` on the operator card. No prompt. |
+| Prior `$TP_WORKSPACE` build | `[ -d "$TP_WORKSPACE" ]` | **Default, no prompt:** rebuild source, **PRESERVE `backend/.env`**, restart services, re-verify (idempotent). Never ask "reset?". |
 
-Substrate assumptions: macOS/Linux; internet for `uv sync` / `npm install`. No accounts, no
-operator-supplied secrets, no Docker.
+Substrate assumptions: macOS/Linux; internet for installs + `uv sync` / `npm install`. No
+accounts, no operator-supplied secrets, no Docker. **Internet is the only external need; missing
+tools are installed by the Steps, never escalated to a human.**
 
 ---
 
@@ -833,9 +861,36 @@ The agent may substitute equivalent commands but must preserve the contracts: **
 9000/9001; `backend/.env` chmod 600; key never echoed to logs; no frontend env; the spec
 (§4–11) is the source of truth — build from it, do not fetch a reference implementation.**
 
-### Step 0: Interview
-Run every §12 `detect`. Send ONE consolidated message. After the reply, run everything below
-autonomously.
+### Step 0: Preflight — autonomous detect-and-install (NO interview)
+Run every §12 `detect` and **auto-resolve each row in place** — install every missing
+dependency, generate/default the rest. **Send no message, ask nothing, wait for no one.** This
+is a pure setup step that leaves the machine ready, then falls straight through to Step 1.
+Concretely, install the toolchain up front so nothing later has to stop:
+```sh
+# uv (backend env + Python ≥3.11) — install if missing, no alternative offered
+command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+command -v uv >/dev/null 2>&1 || { echo "BLOCKED_REASON=uv_install_failed"; exit 1; }
+# Node ≥18 (Vite) — install non-interactively if missing/old (see §12 for per-OS command)
+node -e 'process.exit(process.versions.node.split(".")[0]>=18?0:1)' 2>/dev/null || {
+  if command -v apt-get >/dev/null 2>&1; then
+    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs
+  elif command -v brew >/dev/null 2>&1; then brew install node; fi
+}
+node -e 'process.exit(process.versions.node.split(".")[0]>=18?0:1)' || { echo "BLOCKED_REASON=node_unavailable"; exit 1; }
+# Playwright Chromium for §16 Layer 2 — install the BROWSER + its SYSTEM LIBS now so Verify
+# never pauses. On a minimal container, `npx playwright install chromium` ALONE fails host-deps
+# validation (missing libnss3/libatk/… ) — the system libraries need a package-manager install,
+# which needs root. Do both, using passwordless sudo when present:
+SUDO=""; command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null && SUDO="sudo"
+npx --yes playwright install chromium || true                       # browser binary (user-space)
+$SUDO npx --yes playwright install-deps chromium 2>/dev/null \
+  || npx --yes playwright install --with-deps chromium 2>/dev/null \
+  || $SUDO sh -c 'command -v apt-get >/dev/null && apt-get update -qq && apt-get install -y -qq libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2' \
+  || true   # system libs; if none of these work, §16 Layer 2 records browser_uninstallable
+```
+After this step the run is fully provisioned; **everything below executes autonomously to
+`SEED_RESULT=DONE`.**
 
 ### Step 1: Scaffold the backend (§4–5)
 Create `$TP_WORKSPACE/backend` as a uv project (Python ≥3.11) with deps from §2. Implement the
@@ -847,7 +902,9 @@ derivation (§4.5). Config via pydantic-settings reading `.env` (`LOCAL_MODE`, `
 ### Step 2: Backend env + deps
 ```sh
 cd "$TP_WORKSPACE/backend"
-[ -s .env ] || printf 'LOCAL_MODE=true\nCONTENT_API_KEY=%s\n' "$(openssl rand -hex 16)" > .env
+# Key generation must not depend on any one tool — fall back so this never stalls:
+gen_key() { openssl rand -hex 16 2>/dev/null || python3 -c 'import secrets;print(secrets.token_hex(16))'; }
+[ -s .env ] || printf 'LOCAL_MODE=true\nCONTENT_API_KEY=%s\n' "$(gen_key)" > .env   # reuse existing .env if present
 chmod 600 .env
 uv sync
 ```
@@ -867,12 +924,24 @@ starfield. Then `npm install`.
 Write `scripts/send_roteiros.py` (stdlib, §10.3) and `sample-roteiro.md` verbatim (§10.4).
 
 ### Step 5: Start both services (supervised)
+**Reclaim the ports SAFELY first — kill by LISTENING PORT, never by command-string.** A
+`pkill -f 'uvicorn …'` / `pkill -f 'npm run dev'` matches **the orchestrating shell's own command
+line** (it contains that string) and kills the script running the Steps/Verify (observed: exit
+144). Always free a port by the PID that is *listening* on it:
 ```sh
-cd "$TP_WORKSPACE/backend"  && nohup uv run uvicorn api.main:app --host 0.0.0.0 --port 9000 > /tmp/teleprompter-backend.log 2>&1 &
-cd "$TP_WORKSPACE/frontend" && nohup npm run dev > /tmp/teleprompter-frontend.log 2>&1 &
+stop_port() {  # free port $1 by its listener PID(s); tool-agnostic, never self-matches
+  pids="$(lsof -ti tcp:"$1" 2>/dev/null || true)"
+  [ -z "$pids" ] && pids="$(fuser "$1"/tcp 2>/dev/null || true)"
+  [ -n "$pids" ] && kill $pids 2>/dev/null || true
+}
+stop_port 9000; stop_port 9001; sleep 1   # idempotent: clears a prior teleprompter on these ports
+cd "$TP_WORKSPACE/backend"  && nohup uv run uvicorn api.main:app --host 0.0.0.0 --port 9000 > /tmp/teleprompter-backend.log 2>&1 & echo $! > /tmp/teleprompter-backend.pid
+cd "$TP_WORKSPACE/frontend" && nohup npm run dev > /tmp/teleprompter-frontend.log 2>&1 & echo $! > /tmp/teleprompter-frontend.pid
 ```
 Wait until `curl -sf localhost:9000/` and `curl -sf localhost:9001/` both succeed (~10 s for
-Vite). `--host 0.0.0.0` so a phone on the LAN can reach both ports.
+Vite). `--host 0.0.0.0` so a phone on the LAN can reach both ports. **When the Verify harness
+needs a clean backend restart, restart via `stop_port 9000` (or the saved `.pid`) — never
+`pkill -f` on the service command string.**
 
 ### Step 6: Smoke the roteiro flow (one piece)
 `cd "$TP_WORKSPACE" && printf 'q\n' | python3 scripts/send_roteiros.py` → expect `Total de
@@ -979,9 +1048,13 @@ is proven through the backend WS, not shared client state. Then actually USE it:
 click roteiro parts, present, **play and watch the highlighted current word advance word-by-word,
 centered** (the original glowing box), pause and scrub to recover, change speed/font, mirror, run
 a sustained session. **A green synthetic check is NOT a pass — the pass is the measured 7-point
-drive below.** Install a browser if needed (`npx playwright install
-chromium`); if no browser is installable, say so next to the layer-1 proof (then §16b cannot be
-claimed). Capture screenshots of **both clients** showing the same synced state.
+drive below.** The browser was already installed in **Step 0** (Chromium binary **plus its
+system libs** via `playwright install-deps` / `apt-get` under sudo — the binary alone fails
+host-deps on a minimal container); if for some reason it is not present, install it here the same
+way — do **not** skip Layer 2 to avoid the install, and do **not** ask anyone. Only if Chromium is
+genuinely uninstallable on this substrate, record that next to the layer-1 proof and emit
+`BLOCKED_REASON=browser_uninstallable` (then §16b cannot be claimed). Capture screenshots of
+**both clients** showing the same synced state.
 
 ---
 
@@ -1007,7 +1080,15 @@ controller. *Assert:* B's text becomes that part **≤ 1000 ms** and **resets to
 `X-API-Key` → 401, unset key → 503.)
 
 **4. PRESENT + READ LEGIBLY — the ORIGINAL word-display.** Enter presentation in one click, press
-Play, and sample the display state across ~2 s of playback. *Assert all:*
+Play, and sample the display state across ~2 s of playback. **Drive order (do NOT thrash on it):**
+the Play/Countdown controls exist **only inside the presentation view** — click **Start
+Presenting first**, then Play; clicking countdown/play while still in the editor is a harness
+ordering error, not a product bug. And **account for the §8.6 countdown pre-roll**: a Play (or
+resume) runs a `countdownSeconds` ring (default options `1s/3s/5s`) **before** the scroll starts,
+so word-advance does not begin until the countdown elapses. For this sample, **select the `1s`
+countdown (or wait `countdownSeconds + ~1.5 s` after Play) before asserting `data-word-index`
+increase** — otherwise you are sampling during the pre-roll and the index legitimately has not
+moved yet (a flaky FALSE failure, not a defect). *Assert all:*
   - **Single highlighted current word:** at any instant **exactly one** `.word-active` exists
     (count === 1), and it **advances word-by-word** during playback (its `data-word-index`
     increases over the window).
@@ -1097,8 +1178,11 @@ clamp the current index on a content change, resetting only when `position` itse
 `word-active`, or content empty. Fix: ensure `state:sync` is sent on WS connect; ensure the
 tokenizer assigns `data-word-index`; ensure the scroller keys off `isPlaying`.
 
-**Port already in use on 9000/9001.** Detect: `lsof -i :9000 -i :9001 | grep LISTEN`. Fix:
-kill the stale process (`pkill -f 'uvicorn api.main:app'; pkill -f vite`) or free the port.
+**Port already in use on 9000/9001.** Detect: `lsof -i :9000 -i :9001 | grep LISTEN`. Fix: free
+each port by its **listening PID** — `lsof -ti tcp:9000 | xargs -r kill; lsof -ti tcp:9001 | xargs -r kill`
+(or the `stop_port` helper from Step 5). **Do NOT `pkill -f 'uvicorn …'` / `pkill -f vite`** — that
+pattern matches the orchestrating shell's own command line and kills the script running the
+Steps/Verify (the exit-144 self-kill; see Step 5).
 
 **`vite: command not found` / esbuild platform errors after copying a build between machines.**
 Fix: `rm -rf node_modules && npm install` (never copy `node_modules` across hosts).
@@ -1131,6 +1215,7 @@ Fix: `rm -rf node_modules && npm install` (never copy `node_modules` across host
 
 ## 19. Cleanup
 ```sh
-pkill -f 'uvicorn api.main:app' 2>/dev/null; pkill -f 'vite' 2>/dev/null
+# Stop services by LISTENING PORT, never by command-string (pkill -f matches this very shell).
+lsof -ti tcp:9000 | xargs -r kill 2>/dev/null; lsof -ti tcp:9001 | xargs -r kill 2>/dev/null
 rm -rf "$TP_WORKSPACE"
 ```
