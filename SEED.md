@@ -1641,8 +1641,16 @@ async function main() {
   await pageA.keyboard.press('Space') // resume -> countdown then continue
   await sleep(2600)
   const idxResumed = await activeIndex(pageA)
-  check('5 resume continues from same word (index advances)', idxResumed !== null && idxResumed > idxAfterPause,
-    `resumedTo=${idxResumed}`)
+  const wcSeg = await pageA.evaluate(() => document.querySelectorAll('.teleprompter-word').length)
+  const atSegEnd = idxAfterPause !== null && idxAfterPause >= wcSeg - 1
+  // "resume continues" = the take is NOT frozen/reset: the index advances when there is room,
+  // and HOLDS at the last word when the pause already landed on the segment end (nothing to
+  // advance to — correct product behavior, not a failure). The index must never regress/reset.
+  // (Determinism fold — card add834d5fd3c: the old `> idxAfterPause` false-failed whenever the
+  // pause happened to land on the segment's last word; flaky run-to-run.)
+  check('5 resume continues from same word (index advances, or holds at segment end)',
+    idxResumed !== null && idxResumed >= idxAfterPause && (idxResumed > idxAfterPause || atSegEnd),
+    `resumedTo=${idxResumed} afterPause=${idxAfterPause} words=${wcSeg}`)
 
   // previous segment via ArrowLeft -> swaps + resets to top, B follows
   await pageA.keyboard.press('ArrowLeft')
@@ -2089,6 +2097,15 @@ Steps/Verify (the exit-144 self-kill; see Step 5).
 
 **`vite: command not found` / esbuild platform errors after copying a build between machines.**
 Fix: `rm -rf node_modules && npm install` (never copy `node_modules` across hosts).
+
+**§16b.7 fails on "zero console errors" from a React style-shorthand warning.** Detect: Layer-2
+point 7 fails with a console error like *"Updating a style property during rerender … when a
+conflicting property is set … `border` / `borderColor`"*. Cause: an inline `style={{…}}` mixes a
+**shorthand** (`border`) with a **non-shorthand override** (`borderColor`) on the same element —
+React logs a `console.error`, which trips §16b.7's zero-errors bar. (Component inline styling is
+the builder's to choose — this is not a SEED-pinned value — but the pitfall is common.) Fix: do
+not mix shorthand + longhand on one inline style; use the full `border` shorthand for the
+override (e.g. `border: '1px solid rgba(0,212,255,0.6)'`), or set only longhands.
 
 ---
 

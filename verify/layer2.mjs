@@ -282,8 +282,16 @@ async function main() {
   await pageA.keyboard.press('Space') // resume -> countdown then continue
   await sleep(2600)
   const idxResumed = await activeIndex(pageA)
-  check('5 resume continues from same word (index advances)', idxResumed !== null && idxResumed > idxAfterPause,
-    `resumedTo=${idxResumed}`)
+  const wcSeg = await pageA.evaluate(() => document.querySelectorAll('.teleprompter-word').length)
+  const atSegEnd = idxAfterPause !== null && idxAfterPause >= wcSeg - 1
+  // "resume continues" = the take is NOT frozen/reset: the index advances when there is room,
+  // and HOLDS at the last word when the pause already landed on the segment end (nothing to
+  // advance to — correct product behavior, not a failure). The index must never regress/reset.
+  // (Determinism fold — card add834d5fd3c: the old `> idxAfterPause` false-failed whenever the
+  // pause happened to land on the segment's last word; flaky run-to-run.)
+  check('5 resume continues from same word (index advances, or holds at segment end)',
+    idxResumed !== null && idxResumed >= idxAfterPause && (idxResumed > idxAfterPause || atSegEnd),
+    `resumedTo=${idxResumed} afterPause=${idxAfterPause} words=${wcSeg}`)
 
   // previous segment via ArrowLeft -> swaps + resets to top, B follows
   await pageA.keyboard.press('ArrowLeft')
