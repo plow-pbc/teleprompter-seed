@@ -1010,28 +1010,30 @@ minimum bar otherwise.** You write both from this spec — **nothing is shipped*
 A script (any language; the backend's `websockets` dep makes Python convenient) that asserts:
 1. **Health:** `GET :9000/` → 200 and body contains `"ok"`.
 2. **Frontend serves:** `GET :9001/` → 200 HTML containing the root mount node.
-3. **Roteiro parses:** `sample-roteiro.md` parses to **exactly 5 pieces** (2 HOOKS, 1 BODY, 2
-   CTAs).
+3. **Sample script parses:** `sample-script.md`, split by the §10.1 rule (blank-line blocks;
+   `#`-lines are section labels, every other block is a segment), yields **exactly 5 segments**
+   across **3 sections** (Intro→2, Corpo→2, CTA→1). (The harness re-implements that 4-line rule;
+   it is trivial and language-agnostic.)
 4. **Seeded content:** the initial `state:sync` on a fresh WS connect carries **non-empty**
-   `content` that is the §10.5 sample (contains a recognizable sample phrase, e.g. `roteiro`),
-   **not** an empty string and **not** `This is a text from Daniel!`.
+   `content` equal to the **first segment** of the §10.5 sample (contains a recognizable phrase,
+   e.g. `canal`), **not** an empty string and **not** `This is a text from Daniel!`.
 5. **Content API guard:** `POST /api/content` with a **wrong** `X-API-Key` → **401**. (If you
    can launch a backend with no key, also assert **503**.)
 6. **Live load over an OPEN WebSocket:** connect `ws://localhost:9000/ws`; read the initial
-   `state:sync`; `POST /api/content` with **piece 1** (the correct key); the open socket
-   receives a `state:sync` whose `content` == piece-1 text, **`position` == 0**, **`isPlaying`
+   `state:sync`; `POST /api/content` with **segment 1** text (the correct key); the open socket
+   receives a `state:sync` whose `content` == segment-1 text, **`position` == 0**, **`isPlaying`
    == false**.
-7. **ENTER advance:** `POST` **piece 2**; the open socket receives a `state:sync` swapped to
-   piece-2 text. (This is the script-selection real-time swap at the protocol level.)
+7. **Segment swap:** `POST` **segment 2** text; the open socket receives a `state:sync` swapped to
+   segment-2 text. (This is the segment-select real-time swap at the protocol level.)
 8. **Inline edit keeps position (protocol):** send `state:update {content: "<edited>",
    isPlaying: true, position: 12}` then a follow-up `state:update {content: "<edited2>"}`; the
    resulting `state:sync` keeps **`position == 12`** (a content edit must NOT reset position;
    only the content-API door / `play:reset` resets to 0).
 9. **Two-client broadcast (multi-device backstop):** open **two independent** WS connections
    (sockets 1 and 2). Send a `state:update {content: "<sentinel>"}` on socket 1; *assert* socket
-   2 receives a `state:sync` with that content. Then send a roteiro-PART take-swap
-   `state:update {content: "<part>", isPlaying: false, position: 0}` on socket 1; *assert* socket
-   2 receives `content == <part>` **and `position == 0`**. (Replication is server-side broadcast,
+   2 receives a `state:sync` with that content. Then send a segment take-swap
+   `state:update {content: "<segment>", isPlaying: false, position: 0}` on socket 1; *assert*
+   socket 2 receives `content == <segment>` **and `position == 0`**. (Replication is server-side broadcast,
    so it holds for any two clients — phones included.)
 Exit 0 iff all pass; print enough to debug; finish < 2 min.
 
@@ -1040,9 +1042,9 @@ Exit 0 iff all pass; print enough to debug; finish < 2 min.
 7-point definition. Open the CONTROLLER and the DISPLAY in **two independent browser contexts**
 (Playwright `browser.newContext()` twice → isolated storage) on **separate origins** (controller
 `http://localhost:9001`, display `http://127.0.0.1:9001` or the LAN/tailnet IP) so 2-device sync
-is proven through the backend WS, not shared client state. Then actually USE it: paste a script,
-click roteiro parts, present, **play and watch the highlighted current word advance word-by-word,
-centered** (the original glowing box), pause and scrub to recover, change speed/font, mirror, run
+is proven through the backend WS, not shared client state. Then actually USE it: paste a Markdown
+script, **click segments**, present, **play and watch the highlighted current word advance
+word-by-word, centered** (the original glowing box), pause/resume, change speed/font, mirror, run
 a sustained session. **A green synthetic check is NOT a pass — the pass is the measured 7-point
 drive below.** The browser was already installed in **Step 0** (Chromium binary **plus its
 system libs** via `playwright install-deps` / `apt-get` under sudo — the binary alone fails
@@ -1065,15 +1067,18 @@ display-only (`127.0.0.1:9001` / LAN / tailnet) in **separate contexts**. *Asser
 origins differ (not two tabs of one context), and B reflects a controller content edit
 **≤ 1000 ms** (measure & print the latency).
 
-**2. SCRIPT-IN.** Type a unique sentence into the controller editor (or pick a Script-Library
-entry). *Assert:* B's `.teleprompter-text` contains it **≤ 1000 ms**; and on first load the
-content is the §10.5 sample (contains e.g. `roteiro`), never `This is a text from Daniel!` or
-empty.
+**2. PASTE-IN → SEGMENTS.** On first load *assert:* the paste box (`[data-testid="script-input"]`)
+holds the §10.5 sample (never `This is a text from Daniel!` or empty), the segments panel shows
+**exactly 5** `[data-testid="segment"]` items under **3** `[data-testid="segment-section"]`
+headings, and a `[data-testid="copy-format-prompt"]` button exists. Then paste a fresh small
+script (e.g. `# A\nuno\n\ndois\n\n# B\ntres`) into the box; *assert* the panel re-parses to **3
+segments / 2 sections**. (Clipboard read may be sandboxed; asserting the button exists + click
+doesn't throw is sufficient for the copy-prompt.)
 
-**3. ROTEIRO REAL-TIME.** Click a roteiro PART (`[data-testid="roteiro-part"]`) on the
-controller. *Assert:* B's text becomes that part **≤ 1000 ms** and **resets to the top**
-(`position == 0` / first word active); a second part-click updates B again. (Backstop: wrong
-`X-API-Key` → 401, unset key → 503.)
+**3. SEGMENT REAL-TIME.** Click a segment (`[data-testid="segment"]`, e.g. index 2) on the
+controller. *Assert:* B's text becomes that segment's text **≤ 1000 ms** and **resets to the top**
+(`position == 0` / first word active); a second segment-click (or `ArrowRight` next-segment)
+updates B again. (Backstop: wrong `X-API-Key` → 401, unset key → 503, empty → 422.)
 
 **4. PRESENT + READ LEGIBLY — the ORIGINAL word-display.** Enter presentation in one click, press
 Play, and sample the display state across ~2 s of playback. **Drive order (do NOT thrash on it):**
@@ -1100,25 +1105,28 @@ moved yet (a flaky FALSE failure, not a defect). *Assert all:*
     dark-on-dark bug).
   - **Large enough:** reading font computed `font-size ≥ 40px` at a 1080-min viewport.
 
-**5. MID-TAKE CONTROL / DRIFT RECOVERY.** While playing, press `Space` to pause. *Assert:* the
+**5. MID-TAKE CONTROL (no word-bar).** While playing, press `Space` to pause. *Assert:* the
 active word index is **preserved (non-zero) — pause must NOT reset to 0** (that bug loses the
-take). Then `ArrowLeft` ×N (or scrub bar / click a word): *assert* the active index moves back by
-N (clamped at 0), the highlight re-centers **instantly** (`behavior: 'auto'`), and the **display
-follows ≤ 1000 ms**. Press `Space` to resume: *assert* playback continues from the corrected word
-(a §8.6 countdown precedes the scroll, the CEO-original) and the index advances afterward.
+take), and resume (`Space`) runs the §8.6 countdown then continues from the same word (index
+advances afterward). Then go to the **previous segment** (`ArrowLeft` or click another
+`[data-testid="segment"]`): *assert* the display swaps to that segment's text, **resets to the
+top** (`position == 0`), and B follows **≤ 1000 ms**. *Assert there is **NO** word-scrub range
+input* in the presentation controls (the draggable word-bar is removed — its presence is a FAIL).
 
-**6. NO DEAD CONTROLS / NO SCAFFOLD.** *Assert:* (a) **every control acts** — Reset → index 0;
-Mirror → `scaleX(-1)`; Speed slider extremes read `0.25× / 4.00×`; Text-size slider moves the
-display font; Countdown offers `1s / 3s / 5s` — **no dead buttons**; (b) **no scaffold tells** on
-the display — no `.stars`/starfield, no status pill / readouts / `vmin` jargon, no
-placeholder/bilingual button text; and no `@tsparticles`/`framer-motion` in the bundle. (The
-cyan glowing-box active word is the **correct original look** — NOT a scaffold tell.)
+**6. NO DEAD CONTROLS / NO SCAFFOLD / NO CUT FEATURES.** *Assert:* (a) **every control acts** —
+Reset → index 0; Mirror → `scaleX(-1)`; Speed slider extremes read `0.25× / 4.00×`; Text-size
+slider moves the display font; Countdown offers `1s / 3s / 5s` — **no dead buttons**; (b) **no
+scaffold tells** on the display — no `.stars`/starfield, no status pill / readouts / `vmin`
+jargon, no placeholder/bilingual button text; no `@tsparticles`/`framer-motion` in the bundle;
+**(c) cut features are absent — NO word-scrub range input anywhere, and NO script-library UI**
+(no save/open/rename/delete control, §8.2). (The cyan glowing-box active word is the **correct
+original look** — NOT a scaffold tell.)
 
-**7. SURVIVES A REAL SESSION.** Run a sustained session through both clients — swap several
-roteiro parts (verify the display matches the controller each time), present, play, scrub
-repeatedly, change speed and font, toggle mirror. *Assert:* **zero console/page errors**, no
-crash, the active index stays finite (no NaN/stuck), the display stays in sync, and the
-controller stays responsive (Exit returns to the editor).
+**7. SURVIVES A REAL SESSION.** Run a sustained session through both clients — paste a script,
+**click through several segments** (verify the display matches the controller each time), present,
+play, change speed and font, toggle mirror. *Assert:* **zero console/page errors**, no crash, the
+active index stays finite (no NaN/stuck), the display stays in sync, and the controller stays
+responsive (Exit returns to the editor).
 
 > **Evidence (the CEO verifies by eye):** screenshots of **BOTH** independent clients
 > (A controller + B display) showing the **same synced state** after a controller action AND
