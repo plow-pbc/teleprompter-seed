@@ -450,38 +450,38 @@ The controller has two screens: the **Editor** (default, not presenting) and the
 **Presentation view** (after Start Presenting). The display page always renders the
 presentation reading surface, read-only and script-only (§8.5).
 
-### 8.1 Editor screen — one click into recording, no gate
-The editor is calm and obvious. Top to bottom:
+### 8.1 Editor screen — paste a script, one click into recording, no gate
+The editor is calm and obvious — **one screen, one script** (the script you just pasted; there
+is **no library, no save/open/delete** — §8.2). Top to bottom:
 - **Header bar:** product title `TPFlow Teleprompter` + subtitle `Controller`, the
   **Online/Offline** pill (§6), and a **"Display Mode"** button → switches this page to
   `?mode=display`.
-- **Script Library** (§8.2) — pick/save/name/delete scripts. Selecting one loads it into the
-  editor.
-- **Roteiro panel** (§8.7) — a loaded roteiro bank parsed into **clickable parts** (hooks /
-  bodies / CTAs). **Clicking a part live-swaps the teleprompter content to that part on every
-  connected display, in real time** — the in-controller twin of the terminal sender, and a
-  done-gating feature (J20).
-- A large **textarea** (the script editor), `spellcheck=false`, prefilled on first load with
-  the **§10.5 sample roteiro** (NOT an empty box and NOT a test string like "This is a text
-  from Daniel!"); placeholder (only if cleared) `Paste or type your script here...`; edits push
-  `state:update {content}` live.
+- **The paste box** — a large **textarea** (`data-testid="script-input"`, `spellcheck=false`)
+  where the operator **pastes a Markdown script** in the §10 format. Prefilled on first load
+  with the **§10.5 sample script** (NOT an empty box, NOT a test string like "This is a text
+  from Daniel!"); placeholder (only if cleared) `Paste your Markdown script here…`. Editing
+  re-parses to segments live (§8.7) and pushes `state:update {content}` so the display follows.
+- **"Copy formatting prompt" button** (`data-testid="copy-format-prompt"`, §10.6) — copies a
+  ready-to-paste prompt to the clipboard that the operator hands to their AI assistant to turn
+  any raw document into this teleprompter's Markdown format. (Pure clipboard; no backend.) A
+  brief "Copied ✓" confirmation on click.
+- **Segments panel** (§8.7) — the pasted script parsed into **clickable segments** (grouped
+  under their section headings). **Clicking a segment makes it the current line on every
+  connected display, live.** This is the in-page take driver — done-gating (J20).
 - **Primary action: a single, always-enabled `Start Presenting` button** (full-width, accent
   gradient). **There is NO calibration step, NO "Speed Training" panel, NO gate.** Clicking it
   enters the presentation view immediately. The pacing engine is the §5 fixed profile, already
   loaded. (Removing the calibration gate is **load-bearing** — the old build's fake "🎙 Record
   / Calibrate" that blocked Start Presenting is **cut entirely**; do not reintroduce it.)
 
-### 8.2 Script Library — minimal, real
-A small library so the operator manages multiple roteiros instead of one raw textarea:
-- Backed by `tp-scripts` localStorage (array of `{id, name, content}`) + `tp-active-script`.
-- **Seeded on first load** with the §10.5 samples (at least two named scripts, e.g.
-  `Demo — Abertura` and `Demo — CTA`), so the library is never empty.
-- UI: a list (or select) of saved scripts by **name**; controls to **New** (blank, prompts a
-  name), **Save** (writes the current textarea to the active script), **Rename**, and
-  **Delete**. **Selecting a script loads its `content` into the editor and pushes
-  `state:update {content}`** (so the display swaps too).
-- This is product polish, not a protocol contract — keep it minimal; absolute requirement is
-  only: ≥2 named seeded scripts, select-loads-content, save persists.
+### 8.2 No script library — one pasted script only (DELETED by CEO)
+There is **NO script library**: no save, no "new script", no rename, no delete, no list of saved
+scripts, no `tp-scripts` localStorage. The operator cares only about **the script they just
+pasted**; that single current script lives in the paste box (§8.1) and the shared backend state.
+**Do not build any library/persistence UI** — a build that ships one has misread this seed
+(this is a deliberate simplification the CEO asked for; the earlier library is **cut**). The only
+persistence is the device-local `display-mirror` toggle (§8.5). The script itself is transient:
+paste replaces it; nothing is stored or named.
 
 ### 8.3 Presentation view (controller)
 - **Solid pure-black** screen (§7.2 reading surface — **no starfield, no decorative layer**),
@@ -492,9 +492,9 @@ A small library so the operator manages multiple roteiros instead of one raw tex
     or pending scheduled start). Starting playback runs a **countdown** first.
   - **Reset** button (`↻ Reset`) → position 0, paused.
   - **Exit** (`✕ Exit`) → returns to the editor / unsets presenting.
-  - **A scrub bar** — a range input spanning `0 … lastWordIndex` showing playback progress;
-    **dragging it scrubs the active word index** (drift recovery, §8.4). A small readout shows
-    `word <i+1> / <N>` (a plain count — not jargon).
+  - **NO draggable current-word bar.** The old word-scrub range input is **removed** (the CEO
+    did not ask for it). Take navigation is by **clicking a segment** (§8.7), not by dragging a
+    word slider. Do not render a scrub/progress range input in the presentation controls.
   - **SPEED slider** — **log scale**: slider value `v ∈ [-1, 1]`, `rate = 4^v`, so center =
     1×, ends = 0.25× and 4×. Display the rate as `<rate>×` (2 decimals, e.g. `1.00×`). Tick
     labels: `0.25× · 1× · 4×`. The rate is **clamped to [0.25, 4]** everywhere (a single
@@ -517,33 +517,29 @@ A small library so the operator manages multiple roteiros instead of one raw tex
   `isPlaying=false`, force `backgroundColor="#000000"`, `textColor="#ffffff"`, and emit a
   `state:update` with exactly those fields (so the phone display follows into presentation).
 
-### 8.4 Keyboard + manual pace / drift recovery — FIXED bindings
-Auto-scroll paces from the profile, but it **will** drift off a live speaker. The operator must
-always be able to recover the take by hand. The recovery loop is: **pause → scrub back to the
-spoken word → resume from there** (and on resume the controller's `play:start` carries the
-corrected `position`, so every display jumps to the right word too). All bindings are active in
-the presentation view (controller) and ignored while focus is in an `<input>`/`<textarea>`:
+### 8.4 Keyboard bindings — FIXED (segment-based, NO word-scrub bar)
+Navigation between takes is by **segment** (§8.7), not by a draggable word bar (which is
+**removed**, §8.3). Auto-scroll paces the current segment from the §5 profile; **pause keeps your
+place** (it must NOT jump to 0), and resume runs the §8.6 countdown then continues. All bindings
+are active in the presentation view (controller) and ignored while focus is in an
+`<input>`/`<textarea>`:
 
 | key | action (absolute) |
 |---|---|
-| `Space` | toggle play / pause |
+| `Space` | toggle play / pause (pause keeps position; resume runs the §8.6 countdown) |
 | `ArrowUp` | speed **+0.1** (re-clamp to [0.25, 4]) |
 | `ArrowDown` | speed **−0.1** (re-clamp) |
-| `ArrowRight` | scrub active word **+1** |
-| `ArrowLeft` | scrub active word **−1** |
-| `Shift+ArrowRight` | scrub active word **+10** |
-| `Shift+ArrowLeft` | scrub active word **−10** |
-| `PageDown` | jump to the **next line / paragraph break** (next `\n`-delimited line) |
-| `PageUp` | jump to the **previous line / paragraph break** |
-| `Home` | jump to the **first** word (position 0) |
-| `End` | jump to the **last** word |
+| `ArrowRight` / `PageDown` | go to the **next segment** (§8.7) — sets it current, top, paused |
+| `ArrowLeft` / `PageUp` | go to the **previous segment** — sets it current, top, paused |
+| `Home` | first word of the current segment (position 0) |
+| `End` | last word of the current segment |
 | `M` | toggle **mirror** (horizontal flip) |
 
-Plus pointer affordances: the **scrub bar** drags the active index; **clicking/tapping a word**
-on the presentation text jumps the active index to that word (jump-to-line by eye). Every scrub
-/ jump re-centers via `scrollIntoView`; while **paused** it emits a throttled
-`state:update {position}` so the displays follow (§4.3 position seam). Speed nudges always
-re-clamp via the single `clampPlaybackRate`.
+**No word-level scrub bar and no per-word drag/jump affordance** — those are removed with the
+draggable bar. Segment-advance (next/prev segment, or clicking a segment in §8.7) is the take
+navigation; each segment-set emits one `state:update { content, isPlaying:false, position:0 }`
+so every display jumps to the top of that segment (§4.3). Speed nudges always re-clamp via the
+single `clampPlaybackRate`.
 
 ### 8.5 The display (`?mode=display`) — SCRIPT ONLY
 The display is what the camera films. It shows **only the script** on **solid pure black**:
@@ -569,27 +565,30 @@ an invented deviation and is discarded). With `countdownSeconds = 0`, start imme
 countdown duration drives the local pre-roll and the `desiredStartMs` sent on `play:start`
 (§4.4).
 
-### 8.7 Roteiro panel — clickable parts (controller; real-time take-swap) — FIXED
-The controller carries an **in-UI twin of the terminal sender (§10)**: a roteiro bank parsed
-into **clickable parts**, so the operator can drive takes from the laptop with a click instead
-of (or alongside) the terminal. This is **done-gating** (J20) and is the second half of the
-CEO's multi-device contract (J19/J20).
-- **Source.** The panel parses a roteiro markdown bank with the **same §10.1 grammar / §10.2
-  ordering** as the sender, **client-side**. It is **seeded with the §10.4 bundled sample bank**
-  (so the panel is never empty) and offers a small **paste/load** box to parse a custom bank.
-- **Render.** Show the **ordered** parts (HOOKS → BODIES → CTAs, §10.2) as a list of clickable
-  items, each labeled with its piece id (`H1`, `B1`, `CTA2`, …) and a short text preview. Each
-  item carries `data-testid="roteiro-part"` and `data-part-id="<id>"` so Verify can target it.
-- **Click = real-time take-swap.** Clicking a part sets that part's text as the teleprompter
-  content **on every connected client, live** — a new take: it **resets to the top and pauses**.
-  Emit a single `state:update { content: <part text>, isPlaying: false, position: 0 }`. Because
-  the server applies `isPlaying` before `position` (§4.3), the `position: 0` takes effect even
-  if it was playing, and every display jumps to the top of the new part (this is the **one**
-  content change that carries `position: 0` — distinct from an inline edit, which omits
-  `position` and keeps the operator's place, §3/§7.4).
-- **Parallel with the terminal sender.** The §10.3 `send_roteiros.py` ENTER-per-take flow still
-  works unchanged; the panel is an additional door into the same shared state. Both reach every
-  display through the same broadcast path.
+### 8.7 Segments panel — clickable segments (controller; click = set current) — FIXED
+The controller parses **the pasted Markdown script (§8.1 paste box)** into **segments** (§10
+parse rule) and renders them as a **clickable list**, grouped under their section headings, so
+the operator picks the current line with a click. This is **done-gating** (J20) and is the
+in-page take driver (the CEO's core requested flow).
+- **Source.** Parse the current paste-box content **client-side** with the §10 parse rule
+  (`#`/`##` lines = section labels; each blank-line-separated block = one segment). Re-parse live
+  as the operator edits the paste box. It is never empty when a script is present; seeded on
+  first load with the §10.5 sample.
+- **Render.** Show the segments **in document order**, each as a clickable item with a short text
+  preview, visually grouped under their **section heading** label. Each item carries
+  `data-testid="segment"` and `data-segment-index="<i>"` (0-based, document order) so Verify can
+  target it; section-heading labels carry `data-testid="segment-section"`. Mark the **current**
+  segment (the one on the display) with `data-current="true"` / an active style.
+- **Click = set current, live.** Clicking a segment sets **that segment's text** as the
+  teleprompter content **on every connected client** — a new take: it **resets to the top and
+  pauses**. Emit a single `state:update { content: <segment text>, isPlaying: false, position: 0 }`.
+  Because the server applies `isPlaying` before `position` (§4.3), the `position: 0` takes effect
+  even if it was playing, and every display jumps to the top of that segment. (This — and
+  segment-advance via the §8.4 keys — is the **one** content change that carries `position: 0`;
+  an inline edit of the paste box omits `position` and keeps the operator's place, §3/§7.4.)
+- **No terminal sender.** Input is the in-page paste box + this panel; there is **no**
+  `send_roteiros.py` terminal tool (cut — §10). All clients still sync through the same backend
+  broadcast (`/api/content` + WS remain the sync door for 2-device sync).
 
 ---
 
