@@ -140,8 +140,8 @@ entirely — see §9).
   engine, no animation library, no decorative background layers** — the reading surface is
   **solid pure black** (see §11). A build that pulls in `@tsparticles`/`framer-motion`, or
   that renders a starfield/sparkles/shooting-stars behind the text, is **wrong**.
-- **Roteiro sender**: a **stdlib-only** Python 3 script (`urllib`, `re`, `json`, `pathlib`).
-  No third-party deps — it must run under the same `uv` env or a bare `python3`.
+- **No terminal sender, no script library.** Input is the in-page **paste-Markdown box** +
+  **segments panel** (§8.1/§8.7); there is no `send_roteiros.py` and no saved-scripts UI (§10.3/§8.2).
 - **Ports are fixed contracts.** Backend **9000**, frontend **9001**. The frontend derives
   its WS URL as `ws(s)://<page-hostname>:9000/ws` — **9000 is hardcoded in the client**;
   do not make it configurable, do not read it from env.
@@ -162,41 +162,39 @@ entirely — see §9).
             ┌─────────────────────────────────────────────┐
             │  Backend :9000  (one shared TeleprompterState)│
             │  - GET /            health                    │
-            │  - POST /api/content  (X-API-Key)  ← sender   │
+            │  - POST /api/content  (X-API-Key) external sync│
             │  - WS  /ws          state:sync to ALL clients │
             └───────▲───────────────────────▲───────────────┘
         WS state:update│        WS (read-only)│  state:sync (broadcast)
                        │                      │
-        ┌──────────────┴───────┐   ┌──────────┴───────────────┐
-        │ Controller :9001/    │   │ Display :9001/?mode=display│
-        │ edit, present, drive │   │ phone at camera, SCRIPT-ONLY│
-        └──────────────────────┘   └────────────────────────────┘
-                       ▲
-        POST /api/content (one piece per ENTER)
-                       │
-        ┌──────────────┴──────────────┐
-        │ Roteiro sender (terminal)    │   ← the script-selection / live-swap flow
-        │ parses the script bank .md   │
-        └──────────────────────────────┘
+        ┌──────────────┴───────────────┐   ┌──────────┴───────────────┐
+        │ Controller :9001/            │   │ Display :9001/?mode=display│
+        │ paste MD → segments → click; │   │ phone at camera, SCRIPT-ONLY│
+        │ present, drive               │   │                            │
+        └──────────────────────────────┘   └────────────────────────────┘
 ```
 
 **Two front doors into one store:**
 1. **WebSocket door** (`/ws`, no auth) — the controller pushes partial `state:update`s; the
    server merges into the single shared state and **broadcasts the full `state:sync`** to
-   every connected client (controller + displays).
-2. **Content-API door** (`POST /api/content`, `X-API-Key`) — the roteiro sender pushes a new
-   script piece; the server sets it as the content, **resets scroll position to 0**, pauses
-   playback, and **broadcasts `state:sync`**. This is how "selecting a script from the
-   roteiro modifies the teleprompter content in real time."
+   every connected client (controller + displays). **The in-page flow uses this door:** an
+   inline paste-box edit sends `state:update {content}` (no `position` → keeps place); clicking
+   a segment / advancing sends `state:update {content, isPlaying:false, position:0}` (new take,
+   top).
+2. **Content-API door** (`POST /api/content`, `X-API-Key`) — an **external** push (integrations
+   / scripts) sets the content, **resets scroll position to 0**, pauses, and **broadcasts
+   `state:sync`**. Nothing in the shipped product drives it (no terminal sender), but it remains
+   the documented sync seam and is exercised by Verify Layer 1 (§16).
 
-Both doors mutate the **same** `TeleprompterState`; a piece pushed by the sender renders on
-every display through the same path as a controller edit.
+Both doors mutate the **same** `TeleprompterState`; content pushed through either renders on
+every display through the same broadcast path.
 
 **One subtlety that is load-bearing for "inline editing must not reset scroll":** a *content
-edit* arriving over the **WS door** (`state:update {content}`) does **NOT** touch `position` —
-the operator editing a typo mid-take keeps their place. Only the *content-API door* (a roteiro
-take-swap) resets `position` to 0. Clients must mirror this: re-render text on any content
-change, but **clamp & keep the current word index** on a WS content edit; **only** jump to the
+edit* arriving over the **WS door** as `state:update {content}` **without `position`** does
+**NOT** touch `position` — the operator editing a typo mid-take keeps their place. A **segment
+take-swap** (WS `state:update` *with* `position:0`) or the **content-API door** resets `position`
+to 0. Clients must mirror this: re-render text on any content change, but **clamp & keep the
+current word index** when no `position` is sent; **only** jump to the
 top when `position` itself arrives as 0 (take-swap / Reset). See §6, §7.4.
 
 The shared-state scope is a single fixed user id **`"local-shared"`** — there is no
@@ -357,12 +355,11 @@ engine (§9).
   - `teleprompter-content` (last edited script), `teleprompter-playback-rate` (number),
     `teleprompter-speech-profile` (the §5 profile) — these **persist and seed the initial
     local state on load, before the first `state:sync` arrives**. If `teleprompter-content` is
-    absent (first ever load), seed from the **§10.5 sample roteiro**, never an empty string or
-    a test string.
+    absent (first ever load), seed from the **§10.5 sample script** (its first segment), never an
+    empty string or a test string.
   - `display-mirror` (boolean) — the device's **horizontal-flip / mirror** toggle for glass
-    teleprompter rigs (§8.5). Local to that device, **not synced** over WS.
-  - `tp-scripts` (JSON array of `{id, name, content}`) and `tp-active-script` (id) — the
-    **script library** (§8.2). Seeded on first load with the §10.5 samples.
+    teleprompter rigs (§8.5). Local to that device, **not synced** over WS. **This is the only
+    persisted key** — there is **no** `tp-scripts` / script-library storage (§8.2, cut).
   None of these gate Verify; persistence is a convenience.
 - **Dark class:** the app adds `dark` to `<html>` on mount.
 - **On `state:sync` received:** set content; **on a content change, KEEP the current word
@@ -833,9 +830,8 @@ tools are installed by the Steps, never escalated to a human.**
 | Component | Role |
 |---|---|
 | `backend/` | FastAPI + native WebSocket state server (§4–5). `GET /`, `POST /api/content` (X-API-Key), `WS /ws`. Single shared `local-shared` state, **seeded with the §10.5 sample content**. pydantic-settings reads `backend/.env`. Managed by uv. |
-| `frontend/` | Vite + React + TS + Tailwind SPA (§6–8, §11). Controller (editor + script library + **roteiro panel with clickable parts §8.7** + presentation + drift-recovery controls) and **script-only display** off `?mode=display`. Solid-black reading surface, **original glowing-box word-by-word highlight (§7.4/§11.2)**, mirror mode. Multi-device: every controller action replicates to every display over WS (§15/J19). WS URL derived from hostname — **no env**. **No calibration. No starfield/particle libs.** |
-| `scripts/send_roteiros.py` | The ENTER-per-take roteiro sender (§10). Stdlib only; key from env or `backend/.env`. |
-| `sample-roteiro.md` | The 5-piece sample bank (§10.4): parser fixture + demo content. |
+| `frontend/` | Vite + React + TS + Tailwind SPA (§6–8, §11). Controller (**paste-Markdown box + Copy-formatting-prompt §8.1** + **segments panel, click-to-set-current §8.7** + presentation + controls) and **script-only display** off `?mode=display`. Solid-black reading surface, **original glowing-box word-by-word highlight (§7.4/§11.2)**, mirror mode. Multi-device: every controller action replicates to every display over WS (§15). WS URL derived from hostname — **no env**. **No calibration. No script library. No draggable word-bar. No starfield/particle libs.** |
+| `sample-script.md` | The sample script (§10.4): parser fixture (5 segments / 3 sections) + first-load demo content. |
 | Verify harness | **You author it** from §16 (it is NOT shipped) — a protocol-level script + a browser-driven fidelity pass. |
 
 ---
@@ -900,10 +896,10 @@ Create `$TP_WORKSPACE/frontend` as a Vite React-TS app. Vite config: `host 0.0.0
 derived URL, reconnect, `isConnected`), the display (tokenizer + font math + **solid-black
 surface** + **original word-by-word auto-scroll: single glowing-box `word-active` advancing
 word-by-word, centered via per-word `scrollIntoView`** + **mirror mode**, §7/§8.5/§11), the controller
-**editor (no calibration gate) + script library** (§8.1–8.2), the presentation view + controls +
-**scrub bar / drift-recovery keybindings** (§8.3–8.4), the countdown ring (§8.6), the §11 design
-tokens / slider styling. **No** calibration panel, **no** `@tsparticles`/`framer-motion`, **no**
-starfield. Then `npm install`.
+**paste-Markdown box + Copy-formatting-prompt (§8.1) + segments panel (§8.7, click-to-set-current)**,
+the presentation view + controls + **segment-based keybindings (§8.3–8.4, NO word-scrub bar)**, the
+countdown ring (§8.6), the §11 design tokens / slider styling. **No** calibration panel, **no script
+library**, **no word-scrub bar**, **no** `@tsparticles`/`framer-motion`, **no** starfield. Then `npm install`.
 
 ### Step 4: Sample script (§10.4) — no terminal sender
 Write `sample-script.md` verbatim (§10.4) — it is the parser fixture (5 segments / 3 sections)
