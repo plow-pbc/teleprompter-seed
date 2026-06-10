@@ -533,6 +533,35 @@ paste replaces it; nothing is stored or named.
   `isPlaying=false`, force `backgroundColor="#000000"`, `textColor="#ffffff"`, and emit a
   `state:update` with exactly those fields (so the phone display follows into presentation).
 
+### 8.3a FIXED `data-testid` contract — the PINNED §16 harness keys off these
+Every build MUST expose these **exact** `data-testid`s / classes. This is what lets the ONE
+shipped §16 harness run identically on every install (the absence of a pinned contract is why
+three nodes' self-authored harnesses diverged into 42/41/45):
+
+| element | selector | where |
+|---|---|---|
+| paste box (textarea) | `data-testid="script-input"` | editor (§8.1) |
+| Copy-formatting-prompt button | `data-testid="copy-format-prompt"` (+ `data-copy-state`) | editor (§8.1) |
+| each clickable segment | `data-testid="segment"` (+ `data-segment-index="<i>"`) | segments panel (§8.7) |
+| each section-heading label | `data-testid="segment-section"` | segments panel (§8.7) |
+| Start Presenting button | `data-testid="start-presenting"` | editor (§8.1) |
+| Online/Offline pill | `data-testid="status-pill"` | controller header (§8.1/§8.3) |
+| Play/Pause button | `data-testid="play-toggle"` | presentation (§8.3) |
+| Reset button | `data-testid="reset-btn"` | presentation (§8.3) |
+| Exit button | `data-testid="exit-btn"` | presentation (§8.3) |
+| Speed slider (`<input type=range>`) | `data-testid="speed-slider"` | presentation (§8.3) |
+| Speed readout (`<rate>×` text) | `data-testid="speed-readout"` | presentation (§8.3) |
+| Text-size slider (`<input type=range>`) | `data-testid="size-slider"` | presentation (§8.3) |
+| each Countdown option (1s/3s/5s) | `data-testid="countdown-option"` | presentation (§8.3) |
+| Mirror toggle | `data-testid="mirror-btn"` | presentation (§8.3) |
+| active word | class `.word-active` (+ `data-word-index`) | reading surface (§7, §11.2) |
+| every reading word | class `.teleprompter-word` | reading surface (§7) |
+
+**Negative contract (presence = FAIL):** NO `data-testid` of `word-scrub` / `word-bar` /
+`position-slider` / `scrub`, and **NO `<input type="range">` in the editor** (the draggable
+word-bar is removed — §8.3/§8.4); NO script-library UI (§8.2). The pinned `verify/layer2.mjs`
+asserts these absences directly.
+
 ### 8.4 Keyboard bindings — FIXED (segment-based, NO word-scrub bar)
 Navigation between takes is by **segment** (§8.7), not by a draggable word bar (which is
 **removed**, §8.3). Auto-scroll paces the current segment from the §5 profile; **pause keeps your
@@ -855,7 +884,7 @@ tools are installed by the Steps, never escalated to a human.**
 | `backend/` | FastAPI + native WebSocket state server (§4–5). `GET /`, `POST /api/content` (X-API-Key), `WS /ws`. Single shared `local-shared` state, **seeded with the §10.5 sample content**. pydantic-settings reads `backend/.env`. Managed by uv. |
 | `frontend/` | Vite + React + TS + Tailwind SPA (§6–8, §11). Controller (**paste-Markdown box + Copy-formatting-prompt §8.1** + **segments panel, click-to-set-current §8.7** + presentation + controls) and **script-only display** off `?mode=display`. Solid-black reading surface, **original glowing-box word-by-word highlight (§7.4/§11.2)**, mirror mode. Multi-device: every controller action replicates to every display over WS (§15). WS URL derived from hostname — **no env**. **No calibration. No script library. No draggable word-bar. No starfield/particle libs.** |
 | `sample-script.md` | The sample script (§10.4): parser fixture (5 segments / 3 sections) + first-load demo content. |
-| Verify harness | **You author it** from §16 (it is NOT shipped) — a protocol-level script + a browser-driven fidelity pass. |
+| Verify harness | **SHIPPED & PINNED in §16** — write `verify/layer1.py` + `verify/layer2.mjs` + `verify/probe.mjs` **verbatim** and run them; do **NOT** re-author (a re-authored harness = inconsistent bars + its own false greens/reds — see §16's WHY). |
 
 ---
 
@@ -969,6 +998,25 @@ Print the **network** URLs (so the CEO can run controller and display on **two d
   glass rig. Because both ports bind `0.0.0.0` and the WS URL is hostname-derived, opening the
   display URL on a second device replicates every controller action live (multi-device, §15).
 
+### Step 8: Write & run the PINNED Verify (§16) — do NOT re-author it
+Write the THREE harness files from §16 **verbatim** (byte-for-byte from the fenced blocks) and
+run them — this is the acceptance gate, identical on every install:
+```bash
+cd "$TP_WORKSPACE"
+mkdir -p verify
+# Write verify/layer1.py, verify/layer2.mjs, verify/probe.mjs EXACTLY as shipped in §16.
+# The §6/§8.3a data-testid contract guarantees the one shipped harness runs on this build.
+( cd verify && npm i --no-save playwright >/dev/null 2>&1 || true )   # Chromium binary+libs already from Step 0
+python3 verify/layer1.py                                # Layer 1 — protocol (exit 0 iff all pass)
+LAN_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"  # the served NON-secure origin for 16b.2b
+node verify/layer2.mjs "$LAN_IP"                         # Layer 2 — real two-context 7-point user-drive
+node verify/probe.mjs                                    # 3 regression probes (parser / Space / WS)
+```
+All three must exit 0. A non-zero exit is a **real** failure — fix the **product**; or, if the
+shipped harness itself is wrong, fix it **here in §16** so every install gets the corrected
+harness. **Never silently re-author a per-node harness to make it pass** — that is exactly the
+false-green/false-red mechanism this seed was hardened to remove.
+
 ---
 
 ## 15. Done (observable conditions)
@@ -1015,67 +1063,865 @@ services) instead of breaking state.
 
 ---
 
-## 16. Verify (acceptance harness — you author it; absolute-value, self-contained)
+## 16. Verify (acceptance harness — PINNED & SHIPPED; run it VERBATIM, do NOT re-author)
 
-`## Verify` is two layers, **both required when a browser is obtainable; layer 1 alone is the
-minimum bar otherwise.** You write both from this spec — **nothing is shipped**.
+> **WHY THIS IS PINNED (the false-green/false-red lesson — card add834d5fd3c).** Earlier this
+> harness said "you author it." Three fresh nodes then wrote three *different* harnesses →
+> three different bars (42 / 41 / 45 checks) AND the harnesses carried their **own** bugs
+> (a localStorage-ordering false-RED; a Vite-HMR socket miscounted as a stray app reconnect;
+> the original `38/38`-passed-but-broken clipboard false-GREEN). A Verify you re-author every
+> install is not a consistency proof — it is a different test each time, and it can be wrong in
+> both directions. **So the harness is now SHIPPED, verbatim, below.** Every install writes these
+> EXACT files and runs them — it does NOT invent its own. Determinism is the whole point: the
+> same strong test on every node is what makes a pass mean the same thing everywhere.
+>
+> **Self-contained — no reference instance.** It drives ONLY the app this seed built on
+> `localhost` (+ the served LAN/tailnet IP for the non-secure clipboard check). It reads
+> computed style / DOM and compares to the absolute values in §11 / §7. It keys off the FIXED
+> `data-testid` contract (§6, §8, §10) — which is exactly why a single harness runs identically
+> on every build. If a check needs anything beyond this app, that is a seed bug — fix the seed.
 
-> **Self-contained — no reference instance.** Verify drives **only the app this seed built**
-> on `localhost`. It must NOT require any reference teleprompter, second instance, or golden
-> screenshot. Every visual check reads computed style / DOM and compares to the **absolute
-> values in §11 / §7**. If a check needs a second app to pass, that is a seed bug — fix the
-> seed (carry the value), not the harness.
+Two layers + a regression probe, all THREE shipped. **Layer 1 is the minimum bar; Layer 2 + the
+probe are required whenever Chromium is obtainable (Step 0 installs it).** Write each file
+verbatim, then run them (the §14 runner does this):
 
-### Layer 1 — protocol harness (exit code = truth)
-A script (any language; the backend's `websockets` dep makes Python convenient) that asserts:
-1. **Health:** `GET :9000/` → 200 and body contains `"ok"`.
-2. **Frontend serves:** `GET :9001/` → 200 HTML containing the root mount node.
-3. **Sample script parses:** `sample-script.md`, split by the §10.1 rule (blank-line blocks;
-   `#`-lines are section labels, every other block is a segment), yields **exactly 5 segments**
-   across **3 sections** (Intro→2, Corpo→2, CTA→1). (The harness re-implements that 4-line rule;
-   it is trivial and language-agnostic.)
-4. **Seeded content:** the initial `state:sync` on a fresh WS connect carries **non-empty**
-   `content` equal to the **first segment** of the §10.5 sample (contains a recognizable phrase,
-   e.g. `canal`), **not** an empty string and **not** `This is a text from Daniel!`.
-5. **Content API guard:** `POST /api/content` with a **wrong** `X-API-Key` → **401**. (If you
-   can launch a backend with no key, also assert **503**.)
-6. **Live load over an OPEN WebSocket:** connect `ws://localhost:9000/ws`; read the initial
-   `state:sync`; `POST /api/content` with **segment 1** text (the correct key); the open socket
-   receives a `state:sync` whose `content` == segment-1 text, **`position` == 0**, **`isPlaying`
-   == false**.
-7. **Segment swap:** `POST` **segment 2** text; the open socket receives a `state:sync` swapped to
-   segment-2 text. (This is the segment-select real-time swap at the protocol level.)
-8. **Inline edit keeps position (protocol):** send `state:update {content: "<edited>",
-   isPlaying: true, position: 12}` then a follow-up `state:update {content: "<edited2>"}`; the
-   resulting `state:sync` keeps **`position == 12`** (a content edit must NOT reset position;
-   only the content-API door / `play:reset` resets to 0).
-9. **Two-client broadcast (multi-device backstop):** open **two independent** WS connections
-   (sockets 1 and 2). Send a `state:update {content: "<sentinel>"}` on socket 1; *assert* socket
-   2 receives a `state:sync` with that content. Then send a segment take-swap
-   `state:update {content: "<segment>", isPlaying: false, position: 0}` on socket 1; *assert*
-   socket 2 receives `content == <segment>` **and `position == 0`**. (Replication is server-side broadcast,
-   so it holds for any two clients — phones included.)
-Exit 0 iff all pass; print enough to debug; finish < 2 min.
+```bash
+# §14 runs the PINNED harness — it does not author one:
+cd "$TP_WORKSPACE"
+python3 verify/layer1.py                 # protocol harness — exit 0 iff all pass
+LAN_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"   # the served NON-secure origin for 16b.2b
+node verify/layer2.mjs "$LAN_IP"          # real two-context user-drive (the 7-point bar)
+node verify/probe.mjs                     # 3 regression probes (parser / Space / WS) — see §16b
+```
 
-### Layer 2 — the REAL USER-DRIVE (this is the bar; it REPLACES synthetic journeys)
-**Drive the app like a human recording a video** and measure the outcome of the §16b
-7-point definition. Open the CONTROLLER and the DISPLAY in **two independent browser contexts**
-(Playwright `browser.newContext()` twice → isolated storage) on **separate origins** (controller
-`http://localhost:9001`, display `http://127.0.0.1:9001` or the LAN/tailnet IP) so 2-device sync
-is proven through the backend WS, not shared client state. **The clipboard check (§16b.2b) must
-additionally be driven over a NON-secure `http://<real-IP>:9001` origin (NOT localhost/127.0.0.1),
-because that is the context the operator actually uses and where the clipboard bug lives — a
-localhost-only clipboard check is a false green.** Then actually USE it: paste a Markdown
-script, **click segments**, present, **play and watch the highlighted current word advance
-word-by-word, centered** (the original glowing box), pause/resume, change speed/font, mirror, run
-a sustained session. **A green synthetic check is NOT a pass — the pass is the measured 7-point
-drive below.** The browser was already installed in **Step 0** (Chromium binary **plus its
-system libs** via `playwright install-deps` / `apt-get` under sudo — the binary alone fails
-host-deps on a minimal container); if for some reason it is not present, install it here the same
-way — do **not** skip Layer 2 to avoid the install, and do **not** ask anyone. Only if Chromium is
-genuinely uninstallable on this substrate, record that next to the layer-1 proof and emit
-`BLOCKED_REASON=browser_uninstallable` (then §16b cannot be claimed). Capture screenshots of
-**both clients** showing the same synced state.
+### `verify/layer1.py` — protocol harness (write verbatim)
+~~~~python
+#!/usr/bin/env python3
+"""Layer 1 — protocol harness (SEED.md §16). Exit 0 iff all pass."""
+import asyncio
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.request
+
+import websockets
+
+BACKEND = "http://localhost:9000"
+FRONTEND = "http://localhost:9001"
+WS = "ws://localhost:9000/ws"
+HERE = os.path.dirname(os.path.abspath(__file__))
+SAMPLE = os.path.join(HERE, "..", "sample-script.md")
+
+results = []
+
+
+def check(name, ok, detail=""):
+    results.append((name, ok, detail))
+    print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f" :: {detail}" if detail else ""))
+
+
+def http(method, url, headers=None, body=None):
+    data = body.encode() if isinstance(body, str) else body
+    req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, r.read().decode()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode()
+
+
+# ---- §10.1 parse rule (re-implemented, language-agnostic) ----
+def parse_segments(md):
+    segments = []
+    sections = []
+    label = ""
+    buf = []
+
+    def flush():
+        nonlocal buf
+        text = "\n".join(buf).strip()
+        buf = []
+        if text:
+            segments.append({"text": text, "section": label})
+
+    for line in md.split("\n"):
+        t = line.strip()
+        if t == "":
+            flush()
+        elif t.startswith("#"):
+            flush()
+            label = t.lstrip("#").strip()
+            sections.append(label)
+        else:
+            buf.append(line)
+    flush()
+    return segments, sections
+
+
+async def recv_sync(ws, timeout=5):
+    """Read frames until a state:sync arrives; return its data."""
+    end = time.time() + timeout
+    while time.time() < end:
+        raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
+        msg = json.loads(raw)
+        if msg.get("type") == "state:sync":
+            return msg["data"]
+    raise TimeoutError("no state:sync")
+
+
+def read_key():
+    env = os.path.join(HERE, "..", "backend", ".env")
+    with open(env) as f:
+        for line in f:
+            if line.startswith("CONTENT_API_KEY="):
+                return line.split("=", 1)[1].strip().strip('"')
+    return ""
+
+
+async def main():
+    # 1. Health
+    status, body = http("GET", BACKEND + "/")
+    check("1 health 200 + ok", status == 200 and "ok" in body, f"{status} {body}")
+
+    # 2. Frontend serves root mount node
+    status, body = http("GET", FRONTEND + "/")
+    check("2 frontend serves root", status == 200 and 'id="root"' in body, f"status={status}")
+
+    # 3. Sample parses to 5 segments / 3 sections
+    with open(SAMPLE) as f:
+        md = f.read()
+    segs, secs = parse_segments(md)
+    by_section = {}
+    for s in segs:
+        by_section[s["section"]] = by_section.get(s["section"], 0) + 1
+    ok3 = (
+        len(segs) == 5
+        and len(secs) == 3
+        and by_section.get("Intro") == 2
+        and by_section.get("Corpo") == 2
+        and by_section.get("CTA") == 1
+    )
+    check("3 sample -> 5 segments / 3 sections", ok3, f"{len(segs)} segs, {len(secs)} secs, {by_section}")
+
+    seg1_text = segs[0]["text"]  # first segment (seeded)
+    seg_b_text = segs[1]["text"]
+    seg_c_text = segs[2]["text"]
+
+    # 4. Seeded content on fresh WS connect
+    async with websockets.connect(WS) as ws:
+        st = await recv_sync(ws)
+        content = st.get("content", "")
+        ok4 = (
+            content == seg1_text
+            and content != ""
+            and content != "This is a text from Daniel!"
+            and "canal" in content
+        )
+        check("4 seeded content == first sample segment", ok4, repr(content))
+
+    # 5. Content API guard — wrong key -> 401
+    key = read_key()
+    status, body = http(
+        "POST",
+        BACKEND + "/api/content",
+        {"X-API-Key": "wrong-key", "Content-Type": "application/json"},
+        json.dumps({"content": "x"}),
+    )
+    check("5a wrong key -> 401", status == 401, f"status={status}")
+    # 422 empty content regardless of key
+    status, _ = http(
+        "POST",
+        BACKEND + "/api/content",
+        {"X-API-Key": "wrong-key", "Content-Type": "application/json"},
+        json.dumps({"content": ""}),
+    )
+    check("5b empty content -> 422", status == 422, f"status={status}")
+
+    # 5c. 503 when no key configured — spin a throwaway backend with empty key.
+    proc = None
+    try:
+        env = dict(os.environ)
+        env["CONTENT_API_KEY"] = ""
+        env["LOCAL_MODE"] = "true"
+        backend_dir = os.path.join(HERE, "..", "backend")
+        proc = subprocess.Popen(
+            ["uv", "run", "uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", "9123"],
+            cwd=backend_dir,
+            env={**env, "CONTENT_API_KEY": ""},
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        # wait for it
+        up = False
+        for _ in range(30):
+            try:
+                s, _b = http("GET", "http://127.0.0.1:9123/")
+                if s == 200:
+                    up = True
+                    break
+            except Exception:
+                pass
+            time.sleep(0.3)
+        if up:
+            s, _b = http(
+                "POST",
+                "http://127.0.0.1:9123/api/content",
+                {"X-API-Key": "anything", "Content-Type": "application/json"},
+                json.dumps({"content": "x"}),
+            )
+            check("5c no key configured -> 503", s == 503, f"status={s}")
+        else:
+            check("5c no key configured -> 503", False, "throwaway backend did not start")
+    finally:
+        if proc:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except Exception:
+                proc.kill()
+
+    # 6/7. Live load over open WS + segment swap
+    async with websockets.connect(WS) as ws:
+        await recv_sync(ws)  # initial
+        http(
+            "POST",
+            BACKEND + "/api/content",
+            {"X-API-Key": key, "Content-Type": "application/json"},
+            json.dumps({"content": seg_b_text}),
+        )
+        st = await recv_sync(ws)
+        ok6 = st.get("content") == seg_b_text and st.get("position") == 0 and st.get("isPlaying") is False
+        check("6 content-API swap over open WS (pos0, paused)", ok6,
+              f"content_ok={st.get('content')==seg_b_text} pos={st.get('position')} playing={st.get('isPlaying')}")
+
+        http(
+            "POST",
+            BACKEND + "/api/content",
+            {"X-API-Key": key, "Content-Type": "application/json"},
+            json.dumps({"content": seg_c_text}),
+        )
+        st = await recv_sync(ws)
+        check("7 segment swap", st.get("content") == seg_c_text, repr(st.get("content"))[:60])
+
+    # 8. Inline edit keeps position
+    async with websockets.connect(WS) as ws:
+        await recv_sync(ws)
+        await ws.send(json.dumps({"type": "state:update", "data": {"content": "EDITED ONE", "isPlaying": True, "position": 12}}))
+        await recv_sync(ws)
+        await ws.send(json.dumps({"type": "state:update", "data": {"content": "EDITED TWO"}}))
+        st = await recv_sync(ws)
+        ok8 = st.get("position") == 12 and st.get("content") == "EDITED TWO"
+        check("8 inline edit keeps position==12", ok8, f"pos={st.get('position')} content={st.get('content')!r}")
+        # reset playing state for cleanliness
+        await ws.send(json.dumps({"type": "play:reset", "data": {}}))
+        await recv_sync(ws)
+
+    # 9. Two-client broadcast
+    async with websockets.connect(WS) as s1, websockets.connect(WS) as s2:
+        await recv_sync(s1)
+        await recv_sync(s2)
+        await s1.send(json.dumps({"type": "state:update", "data": {"content": "SENTINEL-XYZ"}}))
+        st2 = await recv_sync(s2)
+        ok9a = st2.get("content") == "SENTINEL-XYZ"
+        # take-swap with position 0
+        await s1.send(json.dumps({"type": "state:update", "data": {"content": seg_b_text, "isPlaying": False, "position": 0}}))
+        st2 = await recv_sync(s2)
+        ok9b = st2.get("content") == seg_b_text and st2.get("position") == 0
+        check("9 two-client broadcast + take-swap pos0", ok9a and ok9b,
+              f"sentinel={ok9a} swap={ok9b} pos={st2.get('position')}")
+
+    failed = [r for r in results if not r[1]]
+    print(f"\n{'='*50}\nLayer 1: {len(results)-len(failed)}/{len(results)} passed")
+    return 0 if not failed else 1
+
+
+if __name__ == "__main__":
+    sys.exit(asyncio.run(main()))
+~~~~
+
+### `verify/layer2.mjs` — the REAL two-context USER-DRIVE = the §16b 7-point bar (write verbatim)
+~~~~js
+// Layer 2 — the REAL USER-DRIVE (SEED.md §16b). Drives the app like a human
+// across two independent browser contexts and measures the 7-point bar.
+import { chromium } from 'playwright'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const LAN_IP = process.argv[2] || process.env.TP_LAN_IP || (() => {
+  throw new Error('Pass the served LAN/tailnet IP as argv[2] (or TP_LAN_IP). \
+The 16b.2b clipboard check MUST run over http://<real-IP>:9001 (a non-secure context), never localhost.')
+})()
+const CTRL = 'http://localhost:9001'
+const DISP = 'http://127.0.0.1:9001'
+const IPURL = `http://${LAN_IP}:9001`
+
+const SAMPLE_SCRIPT = `# Intro
+Ola pessoal, bem-vindos a mais um video do canal.
+
+Hoje eu vou te mostrar como gravar os seus videos lendo direto da tela, sem decorar uma unica linha.
+
+# Corpo
+O texto rola no seu ritmo, a palavra atual fica em destaque, e voce so precisa olhar pra camera e falar.
+
+Se voce se perder, e so pausar, voltar ao segmento certo, e continuar — a gravacao nao se perde.
+
+# CTA
+Cola o seu roteiro, clica em Iniciar Apresentacao, e grava o proximo video lendo direto da tela.`
+
+const FORMAT_PROMPT = `Convert the document below into a teleprompter script in Markdown.
+Rules:
+- Use "#" headings for section titles (for example: Intro, Body, CTA).
+- Put each spoken beat — one sentence or short phrase you would read as a single breath — as its own paragraph, separated by a blank line.
+- Plain Markdown only: headings and paragraphs. No bullet lists, bold, italics, tables, or notes.
+- Output ONLY the formatted script, nothing else.
+
+Document to convert:
+<<< paste your raw text here >>>`
+
+const SHOT_DIR = path.join(__dirname, 'shots')
+fs.mkdirSync(SHOT_DIR, { recursive: true })
+
+const results = []
+function check(name, ok, detail = '') {
+  results.append ? null : results.push({ name, ok, detail })
+  console.log(`[${ok ? 'PASS' : 'FAIL'}] ${name}${detail ? ' :: ' + detail : ''}`)
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+async function pollDisplayContent(page, needle, timeoutMs = 1500) {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    const txt = await page.evaluate(() => document.body.innerText)
+    if (txt.includes(needle)) return Date.now() - start
+    await sleep(30)
+  }
+  return -1
+}
+
+async function activeIndex(page) {
+  return page.evaluate(() => {
+    const el = document.querySelector('.word-active')
+    return el ? Number(el.getAttribute('data-word-index')) : null
+  })
+}
+async function activeCount(page) {
+  return page.evaluate(() => document.querySelectorAll('.word-active').length)
+}
+
+const errors = []
+
+async function main() {
+  const browser = await chromium.launch()
+  const vp = { width: 1920, height: 1080 }
+
+  const ctxA = await browser.newContext({ viewport: vp })
+  const ctxB = await browser.newContext({ viewport: vp })
+  await ctxA.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: CTRL })
+
+  const pageA = await ctxA.newPage()
+  const pageB = await ctxB.newPage()
+  for (const [p, who] of [[pageA, 'A'], [pageB, 'B']]) {
+    p.on('console', (m) => {
+      if (m.type() !== 'error') return
+      const t = m.text()
+      // Ignore the deliberate backstop-probe failures (wrong-key 401 / empty
+      // 422) this harness itself fires — the product never POSTs /api/content
+      // (it syncs over WebSocket), so these are test traffic, not app errors.
+      if (/status of 401|status of 422/.test(t)) return
+      errors.push(`${who}: ${t}`)
+    })
+    p.on('pageerror', (e) => errors.push(`${who}: ${e.message}`))
+  }
+
+  await pageA.goto(CTRL)
+  await pageB.goto(DISP + '/?mode=display')
+  await pageA.waitForSelector('[data-testid="script-input"]')
+  await sleep(800)
+
+  // ---- POINT 2: PASTE-IN -> SEGMENTS (fresh-load assertions first) ----
+  const boxVal = await pageA.inputValue('[data-testid="script-input"]')
+  check('2 paste box holds the sample script', boxVal.trim() === SAMPLE_SCRIPT.trim(),
+    boxVal.includes('This is a text from Daniel') ? 'has forbidden test string' : `len=${boxVal.length}`)
+  const segCount = await pageA.locator('[data-testid="segment"]').count()
+  const secCount = await pageA.locator('[data-testid="segment-section"]').count()
+  check('2 segments=5 / sections=3', segCount === 5 && secCount === 3, `segs=${segCount} secs=${secCount}`)
+  const hasCopy = await pageA.locator('[data-testid="copy-format-prompt"]').count()
+  check('2 copy-format-prompt present', hasCopy === 1)
+  // re-parse on fresh paste
+  await pageA.fill('[data-testid="script-input"]', '# A\nuno\n\ndois\n\n# B\ntres')
+  await sleep(300)
+  const segCount2 = await pageA.locator('[data-testid="segment"]').count()
+  const secCount2 = await pageA.locator('[data-testid="segment-section"]').count()
+  check('2 re-parse -> 3 segments / 2 sections', segCount2 === 3 && secCount2 === 2, `segs=${segCount2} secs=${secCount2}`)
+
+  // ---- POINT 1: 2-DEVICE SYNC ----
+  const originsDiffer = CTRL !== DISP
+  check('1 two independent origins (not two tabs)', originsDiffer, `${CTRL} vs ${DISP}`)
+  await pageA.fill('[data-testid="script-input"]', '# Intro\nSYNCTOKEN42 hello world\n\nsecond beat\n\n# B\nthird beat')
+  const t0 = Date.now()
+  const lat = await pollDisplayContent(pageB, 'SYNCTOKEN42', 1500)
+  check('1 display reflects controller edit <= 1000ms', lat >= 0 && lat <= 1000, `latency=${lat}ms`)
+
+  // ---- POINT 2b: CLIPBOARD over NON-SECURE http-IP ----
+  try {
+    const ctxIP = await browser.newContext({ viewport: vp })
+    await ctxIP.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: IPURL })
+    const pageIP = await ctxIP.newPage()
+    await pageIP.goto(IPURL + '/')
+    await pageIP.waitForSelector('[data-testid="copy-format-prompt"]')
+    const insecure = await pageIP.evaluate(() => window.isSecureContext === false)
+    check('2b origin is NON-secure (isSecureContext===false)', insecure, `secure=${!insecure}`)
+
+    await pageIP.click('[data-testid="copy-format-prompt"]')
+    await sleep(300)
+    const copyState1 = await pageIP.getAttribute('[data-testid="copy-format-prompt"]', 'data-copy-state')
+    const btnText1 = (await pageIP.textContent('[data-testid="copy-format-prompt"]')) || ''
+    check('2b copy reports real success (data-copy-state=ok + "Copied ✓")',
+      copyState1 === 'ok' && btnText1.includes('Copied ✓'), `state=${copyState1} text=${JSON.stringify(btnText1)}`)
+
+    // read OS clipboard back from a SECURE localhost page
+    const readPage = await ctxA.newPage()
+    await readPage.goto(CTRL + '/')
+    await readPage.bringToFront()
+    let clip = ''
+    try {
+      clip = await readPage.evaluate(() => navigator.clipboard.readText())
+    } catch (e) {
+      clip = '__READ_FAILED__:' + e.message
+    }
+    check('2b prompt text actually landed on the clipboard (exact)',
+      clip === FORMAT_PROMPT, clip.startsWith('__READ_FAILED__') ? clip : `match=${clip === FORMAT_PROMPT} len=${clip.length}`)
+
+    // force the fallback to fail -> must show real failure, no fake "Copied ✓"
+    await pageIP.bringToFront()
+    await pageIP.evaluate(() => {
+      // @ts-ignore
+      document.execCommand = () => false
+    })
+    await pageIP.click('[data-testid="copy-format-prompt"]')
+    await sleep(300)
+    const copyState2 = await pageIP.getAttribute('[data-testid="copy-format-prompt"]', 'data-copy-state')
+    const btnText2 = (await pageIP.textContent('[data-testid="copy-format-prompt"]')) || ''
+    await readPage.bringToFront()
+    let clip2 = ''
+    try {
+      clip2 = await readPage.evaluate(() => navigator.clipboard.readText())
+    } catch {
+      clip2 = clip
+    }
+    check('2b forced failure shows real fail (not a fake "Copied ✓") + clipboard unchanged',
+      copyState2 === 'fail' && !btnText2.includes('Copied ✓') && btnText2.toLowerCase().includes('fail') && clip2 === FORMAT_PROMPT,
+      `state=${copyState2} text=${JSON.stringify(btnText2)} clipUnchanged=${clip2 === FORMAT_PROMPT}`)
+    await readPage.close()
+    await ctxIP.close()
+  } catch (e) {
+    check('2b clipboard non-secure flow', false, 'threw: ' + e.message)
+  }
+
+  // ---- restore the full sample on the controller for segment tests ----
+  await pageA.fill('[data-testid="script-input"]', SAMPLE_SCRIPT)
+  await sleep(400)
+
+  // ---- POINT 3: SEGMENT REAL-TIME ----
+  const seg2Text = 'O texto rola no seu ritmo'
+  await pageA.locator('[data-testid="segment"][data-segment-index="2"]').click()
+  const lat3 = await pollDisplayContent(pageB, seg2Text, 1500)
+  const bActive = await activeIndex(pageB)
+  check('3 segment click -> display swaps <=1000ms + resets to top', lat3 >= 0 && lat3 <= 1000 && (bActive === 0 || bActive === null),
+    `latency=${lat3}ms activeIdx=${bActive}`)
+  await pageA.locator('[data-testid="segment"][data-segment-index="3"]').click()
+  const lat3b = await pollDisplayContent(pageB, 'Se voce se perder', 1500)
+  check('3 second segment click updates display', lat3b >= 0 && lat3b <= 1000, `latency=${lat3b}ms`)
+
+  // backstop guards via fetch
+  const key = fs.readFileSync(path.join(__dirname, '..', 'backend', '.env'), 'utf8')
+    .split('\n').find((l) => l.startsWith('CONTENT_API_KEY=')).split('=')[1].trim()
+  const guard = await pageA.evaluate(async () => {
+    const wrong = await fetch('http://localhost:9000/api/content', {
+      method: 'POST', headers: { 'X-API-Key': 'nope', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: 'x' }),
+    })
+    const empty = await fetch('http://localhost:9000/api/content', {
+      method: 'POST', headers: { 'X-API-Key': 'nope', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: '' }),
+    })
+    return { wrong: wrong.status, empty: empty.status }
+  })
+  check('3 backstop guards (wrong->401, empty->422)', guard.wrong === 401 && guard.empty === 422, JSON.stringify(guard))
+  void key
+
+  // reset to segment 0 for presentation
+  await pageA.locator('[data-testid="segment"][data-segment-index="0"]').click()
+  await sleep(300)
+
+  // ---- POINT 4: PRESENT + READ LEGIBLY ----
+  await pageA.locator('[data-testid="start-presenting"]').click()
+  await pageA.waitForSelector('[data-testid="play-toggle"]')
+  // select the 1s countdown to keep the pre-roll short
+  await pageA.locator('[data-testid="countdown-option"]', { hasText: '1s' }).first().click()
+  await sleep(200)
+  await pageA.locator('[data-testid="play-toggle"]').click()
+  await sleep(2600) // 1s countdown + ~1.6s playback
+
+  const dispActiveCount = await activeCount(pageB)
+  const idxStart = await activeIndex(pageB)
+  await sleep(1500)
+  const idxLater = await activeIndex(pageB)
+  check('4 single word-active that advances word-by-word', dispActiveCount === 1 && idxStart !== null && idxLater !== null && idxLater > idxStart,
+    `count=${dispActiveCount} idx ${idxStart}->${idxLater}`)
+
+  const style = await pageB.evaluate(() => {
+    const el = document.querySelector('.word-active')
+    if (!el) return null
+    const cs = getComputedStyle(el)
+    return { color: cs.color, boxShadow: cs.boxShadow, bg: cs.backgroundImage }
+  })
+  check('4 active word = original glowing box (cyan color + glow + gradient)',
+    !!style && style.color === 'rgb(0, 212, 255)' && style.boxShadow !== 'none' && style.bg.includes('gradient'),
+    JSON.stringify(style))
+
+  const centered = await pageB.evaluate(() => {
+    const el = document.querySelector('.word-active')
+    if (!el) return 1
+    const cont = el.closest('.overflow-y-auto')
+    const er = el.getBoundingClientRect()
+    const cr = cont.getBoundingClientRect()
+    return Math.abs((er.top + er.height / 2) - (cr.top + cr.height / 2)) / cr.height
+  })
+  check('4 active word is centered (within ~15%)', centered <= 0.15, `offsetFrac=${centered.toFixed(3)}`)
+
+  const contrast = await pageB.evaluate(() => {
+    const words = [...document.querySelectorAll('.teleprompter-word')].filter((w) => !w.classList.contains('word-active'))
+    let bad = 0
+    for (const w of words) {
+      const cs = getComputedStyle(w)
+      if (cs.color !== 'rgb(255, 255, 255)' || cs.opacity !== '1') bad++
+    }
+    return { total: words.length, bad }
+  })
+  check('4 readable contrast: all non-active words pure white opacity 1', contrast.bad === 0, JSON.stringify(contrast))
+
+  const fontPx = await pageB.evaluate(() => {
+    const el = document.querySelector('.teleprompter-word')
+    return el ? parseFloat(getComputedStyle(el).fontSize) : 0
+  })
+  check('4 reading font large enough (>=40px @1080)', fontPx >= 40, `fontSize=${fontPx}px`)
+
+  // screenshots — both clients during playback
+  await pageA.screenshot({ path: path.join(SHOT_DIR, 'controller-playback.png') })
+  await pageB.screenshot({ path: path.join(SHOT_DIR, 'display-playback.png') })
+
+  // ---- POINT 5: MID-TAKE CONTROL ----
+  const idxBeforePause = await activeIndex(pageA)
+  await pageA.keyboard.press('Space') // pause
+  await sleep(400)
+  const idxAfterPause = await activeIndex(pageA)
+  check('5 pause keeps place (index preserved, non-zero)',
+    idxAfterPause !== null && idxAfterPause > 0 && idxAfterPause === idxBeforePause,
+    `before=${idxBeforePause} after=${idxAfterPause}`)
+
+  await pageA.keyboard.press('Space') // resume -> countdown then continue
+  await sleep(2600)
+  const idxResumed = await activeIndex(pageA)
+  check('5 resume continues from same word (index advances)', idxResumed !== null && idxResumed > idxAfterPause,
+    `resumedTo=${idxResumed}`)
+
+  // previous segment via ArrowLeft -> swaps + resets to top, B follows
+  await pageA.keyboard.press('ArrowLeft')
+  await sleep(200)
+  const bActive5 = await activeIndex(pageB)
+  const bIdxReset = bActive5 === 0 || bActive5 === null
+  const dispText5 = await pageB.evaluate(() => document.body.innerText)
+  check('5 prev-segment swaps display + resets to top', bIdxReset && dispText5.length > 0, `bActive=${bActive5}`)
+
+  const rangeInfo = await pageA.evaluate(() => {
+    const ranges = [...document.querySelectorAll('input[type="range"]')]
+    const ids = ranges.map((r) => r.getAttribute('data-testid'))
+    const scrub = document.querySelector('[data-testid="word-scrub"],[data-testid="word-bar"],[data-testid="position-slider"],[data-testid="scrub"]')
+    return { count: ranges.length, ids, hasScrub: !!scrub }
+  })
+  check('5 NO word-scrub bar (only speed + size sliders)',
+    rangeInfo.count === 2 && !rangeInfo.hasScrub && rangeInfo.ids.includes('speed-slider') && rangeInfo.ids.includes('size-slider'),
+    JSON.stringify(rangeInfo))
+
+  // ---- POINT 6: NO DEAD CONTROLS / NO SCAFFOLD / NO CUT FEATURES ----
+  // (a) Reset -> index 0
+  await pageA.locator('[data-testid="reset-btn"]').click()
+  await sleep(300)
+  const idxReset = await activeIndex(pageA)
+  check('6a Reset -> index 0', idxReset === 0 || idxReset === null, `idx=${idxReset}`)
+  // Mirror -> scaleX(-1)
+  await pageA.locator('[data-testid="mirror-btn"]').click()
+  await sleep(200)
+  const mirrorXform = await pageA.evaluate(() => {
+    const el = document.querySelector('.teleprompter-word')
+    const block = el ? el.parentElement : null
+    return block ? getComputedStyle(block).transform : 'none'
+  })
+  check('6a Mirror -> scaleX(-1)', mirrorXform.includes('matrix(-1'), mirrorXform)
+  await pageA.locator('[data-testid="mirror-btn"]').click() // toggle back
+  // Speed extremes
+  const speed = pageA.locator('[data-testid="speed-slider"]')
+  await speed.focus()
+  await speed.fill('-1')
+  await sleep(150)
+  const speedMin = await pageA.textContent('[data-testid="speed-readout"]')
+  await speed.fill('1')
+  await sleep(150)
+  const speedMax = await pageA.textContent('[data-testid="speed-readout"]')
+  check('6a Speed slider extremes read 0.25× / 4.00×',
+    speedMin.includes('0.25×') && speedMax.includes('4.00×'), `${speedMin} .. ${speedMax}`)
+  await speed.fill('0')
+  // Text-size moves display font
+  const fontBefore = await pageB.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.teleprompter-word')).fontSize))
+  const size = pageA.locator('[data-testid="size-slider"]')
+  await size.focus()
+  await size.fill('1')
+  await sleep(400)
+  const fontAfter = await pageB.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.teleprompter-word')).fontSize))
+  check('6a Text-size slider moves the display font', fontAfter > fontBefore, `${fontBefore} -> ${fontAfter}`)
+  await size.fill('0')
+  // Countdown offers 1/3/5
+  const cdCount = await pageA.locator('[data-testid="countdown-option"]').count()
+  check('6a Countdown offers 1s/3s/5s', cdCount === 3, `options=${cdCount}`)
+
+  // (b) no scaffold tells on the display
+  const dispScaffold = await pageB.evaluate(() => {
+    const stars = document.querySelector('.stars, [class*="starfield"], [class*="sparkle"]')
+    const pill = document.querySelector('[data-testid="status-pill"]')
+    const body = document.body.innerText.toLowerCase()
+    return { stars: !!stars, pill: !!pill, hasVmin: body.includes('vmin'), hasDaniel: body.includes('text from daniel') }
+  })
+  check('6b display has no scaffold (no stars/pill/vmin/test-string)',
+    !dispScaffold.stars && !dispScaffold.pill && !dispScaffold.hasVmin && !dispScaffold.hasDaniel, JSON.stringify(dispScaffold))
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'frontend', 'package.json'), 'utf8'))
+  const allDeps = { ...pkg.dependencies, ...pkg.devDependencies }
+  const banned = Object.keys(allDeps).filter((d) => d.includes('tsparticles') || d.includes('framer-motion'))
+  check('6b bundle has no @tsparticles / framer-motion', banned.length === 0, JSON.stringify(banned))
+
+  // (c) cut features absent — no script library UI anywhere on the editor
+  await pageA.locator('[data-testid="exit-btn"]').click()
+  await sleep(300)
+  const libUI = await pageA.evaluate(() => {
+    const txt = document.body.innerText.toLowerCase()
+    const libWords = ['save script', 'new script', 'rename', 'delete script', 'my scripts', 'saved scripts', 'script library']
+    return libWords.filter((w) => txt.includes(w))
+  })
+  check('6c no script-library UI (no save/open/rename/delete)', libUI.length === 0, JSON.stringify(libUI))
+  const editorRanges = await pageA.evaluate(() => document.querySelectorAll('input[type="range"]').length)
+  check('6c no word-scrub range input in editor', editorRanges === 0, `ranges=${editorRanges}`)
+
+  // ---- POINT 7: SURVIVES A REAL SESSION ----
+  // click through several segments, verify display matches each
+  let allMatch = true
+  for (const [idx, needle] of [[1, 'Hoje eu vou'], [4, 'Cola o seu roteiro'], [2, 'O texto rola']]) {
+    await pageA.locator(`[data-testid="segment"][data-segment-index="${idx}"]`).click()
+    const l = await pollDisplayContent(pageB, needle, 1500)
+    if (l < 0) allMatch = false
+  }
+  check('7 click through several segments, display matches each', allMatch)
+  // present, play, change speed/font, mirror — a sustained run
+  await pageA.locator('[data-testid="start-presenting"]').click()
+  await pageA.waitForSelector('[data-testid="play-toggle"]')
+  await pageA.locator('[data-testid="countdown-option"]', { hasText: '1s' }).first().click()
+  await pageA.locator('[data-testid="play-toggle"]').click()
+  await sleep(1800)
+  await pageA.keyboard.press('ArrowUp')
+  await pageA.keyboard.press('ArrowUp')
+  await pageA.locator('[data-testid="mirror-btn"]').click()
+  await sleep(1200)
+  const idxFinite = await activeIndex(pageA)
+  const bInSync = await pageB.evaluate(() => document.body.innerText.length > 0)
+  await pageA.locator('[data-testid="exit-btn"]').click()
+  await sleep(300)
+  const backToEditor = await pageA.locator('[data-testid="script-input"]').count()
+  check('7 finite index, display in sync, exit returns to editor',
+    idxFinite !== null && Number.isFinite(idxFinite) && bInSync && backToEditor === 1,
+    `idx=${idxFinite} inSync=${bInSync} editor=${backToEditor === 1}`)
+
+  // final screenshots after a synced segment click
+  await pageA.locator('[data-testid="segment"][data-segment-index="0"]').click()
+  await sleep(500)
+  await pageA.screenshot({ path: path.join(SHOT_DIR, 'controller-final.png') })
+  await pageB.screenshot({ path: path.join(SHOT_DIR, 'display-final.png') })
+
+  check('7 zero console/page errors during the session', errors.length === 0, errors.slice(0, 5).join(' | '))
+
+  await browser.close()
+
+  const failed = results.filter((r) => !r.ok)
+  console.log(`\n${'='.repeat(54)}\nLayer 2: ${results.length - failed.length}/${results.length} passed`)
+  if (failed.length) {
+    console.log('FAILED:')
+    failed.forEach((f) => console.log(`  - ${f.name} :: ${f.detail}`))
+  }
+  process.exit(failed.length ? 1 : 0)
+}
+
+main().catch((e) => {
+  console.error('Layer 2 crashed:', e)
+  process.exit(2)
+})
+~~~~
+
+### `verify/probe.mjs` — 3 pinned REGRESSION PROBES (write verbatim)
+> Locks the three behaviors this validation surfaced so they can never silently regress or
+> false-fail again: **(1) parser** — a heading immediately followed by text with no blank line
+> (`# Intro\nuno`) must parse as section+segment, not collapse; **(2) Space single-toggle** —
+> after a mouse-click on Play (button focused), one `Space` toggles EXACTLY once (the global
+> keydown `preventDefault()` suppresses the button's native activation — no double-toggle);
+> **(3) WS single socket** — under React StrictMode's dev double-mount there is exactly ONE live
+> `:9000/ws` socket and NO stray reconnect. **Count only the app's `:9000/ws` socket — Vite's
+> `:9001` HMR dev-server WebSocket is unrelated infrastructure; counting it is a harness
+> false-RED (the exact mistake that wasted a cycle here).**
+~~~~js
+// TARGETED BUG-PROBE — 3 specific behaviors, proven at runtime.
+import { chromium } from 'playwright'
+
+const CTRL = 'http://localhost:9001'
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+async function main() {
+  const browser = await chromium.launch()
+  const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 } })
+
+  // ---------- PROBE 3 instrumentation: wrap WebSocket BEFORE any app code ----------
+  await ctx.addInitScript(() => {
+    const RealWS = window.WebSocket
+    window.__wsLog = []
+    const t0 = performance.now()
+    function WrappedWS(url, protocols) {
+      const ws = protocols ? new RealWS(url, protocols) : new RealWS(url)
+      const rec = { url, createdAt: performance.now() - t0, ref: ws }
+      window.__wsLog.push(rec)
+      return ws
+    }
+    WrappedWS.prototype = RealWS.prototype
+    WrappedWS.CONNECTING = RealWS.CONNECTING
+    WrappedWS.OPEN = RealWS.OPEN
+    WrappedWS.CLOSING = RealWS.CLOSING
+    WrappedWS.CLOSED = RealWS.CLOSED
+    window.WebSocket = WrappedWS
+  })
+
+  const page = await ctx.newPage()
+  const consoleErrors = []
+  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()) })
+  page.on('pageerror', (e) => consoleErrors.push('PAGEERROR: ' + e.message))
+
+  await page.goto(CTRL)
+  await page.waitForSelector('[data-testid="script-input"]')
+  await sleep(700)
+
+  // ========================================================================
+  // PROBE 1 — parser: heading immediately followed by text, no blank line
+  // ========================================================================
+  await page.fill('[data-testid="script-input"]', '# Intro\nuno\n\n# Body\ndois')
+  await sleep(300)
+  const segTexts = await page.$$eval('[data-testid="segment"]', (els) =>
+    els.map((e) => e.textContent.trim()),
+  )
+  const secLabels = await page.$$eval('[data-testid="segment-section"]', (els) =>
+    els.map((e) => e.textContent.trim()),
+  )
+  const p1ok =
+    segTexts.length === 2 &&
+    secLabels.length === 2 &&
+    segTexts[0] === 'uno' &&
+    segTexts[1] === 'dois' &&
+    secLabels[0] === 'Intro' &&
+    secLabels[1] === 'Body'
+  console.log(`PROBE 1 PARSER: ${p1ok ? 'PASS' : 'FAIL'}`)
+  console.log(`   segments(${segTexts.length})=${JSON.stringify(segTexts)} sections(${secLabels.length})=${JSON.stringify(secLabels)}`)
+
+  // ========================================================================
+  // PROBE 2 — Space double-toggle after a mouse-click on Play
+  // ========================================================================
+  // restore a multi-word script so the index can advance
+  await page.fill('[data-testid="script-input"]', '# Intro\numa duas tres quatro cinco seis sete oito nove dez once doze')
+  await sleep(200)
+  await page.locator('[data-testid="start-presenting"]').click()
+  await page.waitForSelector('[data-testid="play-toggle"]')
+  await page.locator('[data-testid="countdown-option"]', { hasText: '1s' }).first().click()
+  await sleep(150)
+  // MOUSE-click Play -> starts 1s countdown, then plays. Button is now focused.
+  await page.locator('[data-testid="play-toggle"]').click()
+  await sleep(1900) // countdown(1s) + a little playback
+  const labelAfterPlay = (await page.textContent('[data-testid="play-toggle"]')).trim()
+  const idxPlaying = await page.evaluate(() => {
+    const el = document.querySelector('.word-active')
+    return el ? Number(el.getAttribute('data-word-index')) : null
+  })
+  await sleep(500)
+  const idxPlaying2 = await page.evaluate(() => {
+    const el = document.querySelector('.word-active')
+    return el ? Number(el.getAttribute('data-word-index')) : null
+  })
+  const wasPlaying = labelAfterPlay.includes('Pause') && idxPlaying2 !== null && idxPlaying2 >= idxPlaying
+
+  // Now press Space EXACTLY ONCE. Button is focused from the mouse click.
+  await page.keyboard.press('Space')
+  await sleep(700)
+  const labelAfterSpace = (await page.textContent('[data-testid="play-toggle"]')).trim()
+  const idxAfterSpaceA = await page.evaluate(() => {
+    const el = document.querySelector('.word-active')
+    return el ? Number(el.getAttribute('data-word-index')) : null
+  })
+  await sleep(700)
+  const idxAfterSpaceB = await page.evaluate(() => {
+    const el = document.querySelector('.word-active')
+    return el ? Number(el.getAttribute('data-word-index')) : null
+  })
+  // Exactly one toggle: Pause -> Play, and the index froze (no longer advancing).
+  const toggledOnce = labelAfterSpace.includes('Play') && idxAfterSpaceA === idxAfterSpaceB
+  const p2ok = wasPlaying && toggledOnce
+  console.log(`PROBE 2 SPACE DOUBLE-TOGGLE: ${p2ok ? 'PASS' : 'FAIL'}`)
+  console.log(`   afterPlay label=${JSON.stringify(labelAfterPlay)} idx ${idxPlaying}->${idxPlaying2} (playing=${wasPlaying})`)
+  console.log(`   afterSpace label=${JSON.stringify(labelAfterSpace)} idx frozen ${idxAfterSpaceA}==${idxAfterSpaceB} (toggledOnce=${toggledOnce})`)
+
+  // ========================================================================
+  // PROBE 3 — exactly ONE live WebSocket, no stray reconnect (StrictMode)
+  // ========================================================================
+  // we've been on the page ~5s+ already; sample WS log over a quiet window
+  // Count ONLY the app's backend socket (:9000/ws). The dev server's own Vite
+  // HMR WebSocket (ws://...:9001/?token=...) is unrelated infrastructure and
+  // must be excluded — counting it is a false positive.
+  const sample = () =>
+    page.evaluate(() =>
+      (window.__wsLog || [])
+        .filter((r) => /:9000\/ws/.test(r.url))
+        .map((r) => ({ createdAt: Math.round(r.createdAt), readyState: r.ref.readyState })),
+    )
+  const wsReport = await sample()
+  await sleep(2500)
+  const wsReport2 = await sample()
+  const totalCreated = wsReport2.length
+  const openNow = wsReport2.filter((r) => r.readyState === 1).length
+  const closedNow = wsReport2.filter((r) => r.readyState === 3).length
+  // any app socket created AFTER the initial double-mount window (>2000ms) = spurious reconnect
+  const lateCreations = wsReport2.filter((r) => r.createdAt > 2000).length
+  // no growth between the two samples (stable, no reconnect churn)
+  const grewBetweenSamples = wsReport2.length - wsReport.length
+  const p3ok = openNow === 1 && lateCreations === 0 && grewBetweenSamples === 0
+  console.log(`PROBE 3 WS RECONNECT: ${p3ok ? 'PASS' : 'FAIL'}`)
+  console.log(`   app sockets(:9000/ws) created=${totalCreated} open=${openNow} closed=${closedNow} lateReconnects=${lateCreations} growthBetweenSamples=${grewBetweenSamples}`)
+  console.log(`   timeline=${JSON.stringify(wsReport2)}`)
+
+  console.log(`\n   (console errors during probe: ${consoleErrors.length})`)
+  if (consoleErrors.length) console.log('   ' + consoleErrors.slice(0, 5).join('\n   '))
+
+  await browser.close()
+  const allPass = p1ok && p2ok && p3ok
+  console.log(`\n${'='.repeat(50)}\nPROBE RESULT: ${allPass ? 'ALL PASS' : 'HAS FAILURES'}`)
+  process.exit(allPass ? 0 : 1)
+}
+
+main().catch((e) => { console.error('probe crashed', e); process.exit(2) })
+~~~~
 
 ---
 
