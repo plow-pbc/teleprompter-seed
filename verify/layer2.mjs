@@ -252,7 +252,9 @@ async function main() {
   check('4b countdown is IN FRONT of the text (not behind)', !!cdB && cdB.inFront, `inFront=${cdB && cdB.inFront}`)
   check('4b countdown has a blurred backdrop behind the number', !!cdB && cdB.hasBlur, `hasBlur=${cdB && cdB.hasBlur}`)
   check('4b countdown animates continuously (CSS animation/transition)', !!cdB && cdB.animated, `animated=${cdB && cdB.animated}`)
-  check('4b countdown counts down (number decreases 3->2->1)', cdNum1 !== null && cdNum2 !== null && Number(cdNum2) < Number(cdNum1), `n1=${cdNum1} n2=${cdNum2}`)
+  check('4b countdown shows the right digit and counts down (starts <=3, then 3->2->1)',
+    cdNum1 !== null && cdNum2 !== null && Number(cdNum1) >= 1 && Number(cdNum1) <= 3 && Number(cdNum2) < Number(cdNum1) && Number(cdNum2) >= 1,
+    `n1=${cdNum1} n2=${cdNum2}`)
 
   await sleep(2600) // remainder of the 3s countdown + ~1.6s playback before sampling word-advance
 
@@ -313,8 +315,16 @@ async function main() {
     idxAfterPause !== null && idxAfterPause > 0 && idxAfterPause === idxBeforePause,
     `before=${idxBeforePause} after=${idxAfterPause}`)
 
-  await pageA.keyboard.press('Space') // resume -> countdown then continue
-  await sleep(2600)
+  // HARNESS TIMING FIX (card add834d5fd3c): Point 4b selected a 3s countdown to sample the
+  // overlay; a faithful §8.6 resume runs the FULL selected countdown before scrolling, so a 3s
+  // resume would not advance within the assertion window (false-fail). Select a 1s countdown here
+  // (controls are visible while paused) so the resume pre-roll is short. This is a HARNESS timing
+  // fix, NOT a product change — the product still runs the full selected countdown on resume; do
+  // NOT cap the product's resume countdown to satisfy this check.
+  await pageA.locator('[data-testid="countdown-option"]', { hasText: '1s' }).first().click()
+  await sleep(150)
+  await pageA.keyboard.press('Space') // resume -> 1s countdown then continue
+  await sleep(3000) // 1s countdown + ~2s advance window (generous, machine-speed independent)
   const idxResumed = await activeIndex(pageA)
   const wcSeg = await pageA.evaluate(() => document.querySelectorAll('.teleprompter-word').length)
   const atSegEnd = idxAfterPause !== null && idxAfterPause >= wcSeg - 1

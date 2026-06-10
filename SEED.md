@@ -517,9 +517,15 @@ paste replaces it; nothing is stored or named.
     deterministically sets `position = 0` (first word active) **and** `isPlaying = false`,
     regardless of whether it is currently playing, paused, or already at the start, and emits one
     `state:update {position: 0, isPlaying: false}` so every display jumps to the top too. **Reset
+    also resets the controller's OWN local active-word index to 0 immediately** — do not wait for
+    the WS round-trip, and the "client owns position during playback" guard (§4.3/§7.4) **MUST
+    yield to an explicit Reset**: a `position:0` + `isPlaying:false` from Reset always wins and
+    snaps the local index to 0, even if the index value looks "unchanged" to a sync guard. **Reset
     is NOT a pause toggle** — pausing is the separate Play/Pause button (§Space). (CEO bug, card
     add834d5fd3c: Reset was state-dependent — it paused instead of resetting, a second click did
-    nothing, and it only worked after pressing Play again. Reset must be a pure idempotent
+    nothing, and it only worked after pressing Play again. A later fresh build also left the local
+    index at its playing value because Reset's `position:0` was treated as "unchanged" and ignored
+    during playback — hence the explicit local-reset rule above. Reset must be a pure idempotent
     jump-to-beginning from every state.)
   - **NOTE — the Exit button is NOT in this controls bar.** It lives fixed in the **top-right
     corner** of the presentation view (see the dedicated bullet below).
@@ -1647,7 +1653,9 @@ async function main() {
   check('4b countdown is IN FRONT of the text (not behind)', !!cdB && cdB.inFront, `inFront=${cdB && cdB.inFront}`)
   check('4b countdown has a blurred backdrop behind the number', !!cdB && cdB.hasBlur, `hasBlur=${cdB && cdB.hasBlur}`)
   check('4b countdown animates continuously (CSS animation/transition)', !!cdB && cdB.animated, `animated=${cdB && cdB.animated}`)
-  check('4b countdown counts down (number decreases 3->2->1)', cdNum1 !== null && cdNum2 !== null && Number(cdNum2) < Number(cdNum1), `n1=${cdNum1} n2=${cdNum2}`)
+  check('4b countdown shows the right digit and counts down (starts <=3, then 3->2->1)',
+    cdNum1 !== null && cdNum2 !== null && Number(cdNum1) >= 1 && Number(cdNum1) <= 3 && Number(cdNum2) < Number(cdNum1) && Number(cdNum2) >= 1,
+    `n1=${cdNum1} n2=${cdNum2}`)
 
   await sleep(2600) // remainder of the 3s countdown + ~1.6s playback before sampling word-advance
 
@@ -1708,8 +1716,16 @@ async function main() {
     idxAfterPause !== null && idxAfterPause > 0 && idxAfterPause === idxBeforePause,
     `before=${idxBeforePause} after=${idxAfterPause}`)
 
-  await pageA.keyboard.press('Space') // resume -> countdown then continue
-  await sleep(2600)
+  // HARNESS TIMING FIX (card add834d5fd3c): Point 4b selected a 3s countdown to sample the
+  // overlay; a faithful §8.6 resume runs the FULL selected countdown before scrolling, so a 3s
+  // resume would not advance within the assertion window (false-fail). Select a 1s countdown here
+  // (controls are visible while paused) so the resume pre-roll is short. This is a HARNESS timing
+  // fix, NOT a product change — the product still runs the full selected countdown on resume; do
+  // NOT cap the product's resume countdown to satisfy this check.
+  await pageA.locator('[data-testid="countdown-option"]', { hasText: '1s' }).first().click()
+  await sleep(150)
+  await pageA.keyboard.press('Space') // resume -> 1s countdown then continue
+  await sleep(3000) // 1s countdown + ~2s advance window (generous, machine-speed independent)
   const idxResumed = await activeIndex(pageA)
   const wcSeg = await pageA.evaluate(() => document.querySelectorAll('.teleprompter-word').length)
   const atSegEnd = idxAfterPause !== null && idxAfterPause >= wcSeg - 1
@@ -2205,6 +2221,10 @@ each port by its **listening PID** — `lsof -ti tcp:9000 | xargs -r kill; lsof 
 (or the `stop_port` helper from Step 5). **Do NOT `pkill -f 'uvicorn …'` / `pkill -f vite`** — that
 pattern matches the orchestrating shell's own command line and kills the script running the
 Steps/Verify (the exit-144 self-kill; see Step 5).
+
+**Copy button flashes the WRONG state on a rapid 2nd click (§16b.2b forced-failure shows `idle`).** Detect: a forced-failure copy right after a success shows `data-copy-state="idle"` (or stale `ok`) instead of `fail`. Cause: the success path schedules a `setTimeout` that resets `copyState` to `idle`, and a later click's `fail` gets clobbered by that pending timer. Fix: **clear any pending copy-state timer before setting a new copy-state** (one timer ref, cleared on each click). (Surfaced fresh, card add834d5fd3c.)
+
+**Probe-3 spurious WS reconnect under StrictMode (an app socket created after unmount).** Detect: `verify/probe.mjs` PROBE 3 shows a `:9000/ws` socket created late / `lateReconnects>0`. Cause: calling `ws.close(1000)` on a socket still in `CONNECTING` (the StrictMode first mount) and/or relying on a shared close flag lets the cleanup schedule a reconnect. Fix: a **dedicated per-instance `unmounted` flag** set in cleanup that suppresses ALL reconnects after unmount (distinct from the normal close flag), and guard `close()` on `readyState`. (Surfaced fresh, card add834d5fd3c.)
 
 **`vite: command not found` / esbuild platform errors after copying a build between machines.**
 Fix: `rm -rf node_modules && npm install` (never copy `node_modules` across hosts).
