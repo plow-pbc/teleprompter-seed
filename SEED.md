@@ -1667,8 +1667,16 @@ async function main() {
   const cdA = await cdProbe(pageA)
   const cdB = await cdProbe(pageB)
   const cdNum1 = cdB ? cdB.num : null
-  await sleep(1000)
-  const cdNum2 = await pageB.evaluate(() => { const el = document.querySelector('[data-testid="countdown-overlay"]'); return el ? (el.textContent || '').replace(/[^0-9]/g, '') : null })
+  // Poll for a decrement rather than sampling once at a fixed +1000ms — a single fixed-interval
+  // read can straddle the 1-second tick and flakily see n1==n2 (e.g. 3,3) even though the
+  // countdown is decrementing correctly. A 3s countdown reliably shows a lower digit within ~2s.
+  // (Harness flakiness fold — card add834d5fd3c; nodes that decrement fine were false-failing.)
+  let cdNum2 = cdNum1
+  for (let i = 0; i < 18; i++) {
+    await sleep(150)
+    const n = await pageB.evaluate(() => { const el = document.querySelector('[data-testid="countdown-overlay"]'); return el ? (el.textContent || '').replace(/[^0-9]/g, '') : null })
+    if (n && cdNum1 && Number(n) < Number(cdNum1)) { cdNum2 = n; break }
+  }
   check('4b countdown renders on the DISPLAY (not just controller)', !!cdB && cdB.present, `display=${JSON.stringify(cdB)} ctrl=${JSON.stringify(cdA)}`)
   check('4b countdown is IN FRONT of the text (not behind)', !!cdB && cdB.inFront, `inFront=${cdB && cdB.inFront}`)
   check('4b countdown has a blurred backdrop behind the number', !!cdB && cdB.hasBlur, `hasBlur=${cdB && cdB.hasBlur}`)
