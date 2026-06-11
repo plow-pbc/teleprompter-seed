@@ -29,8 +29,9 @@ Paste your script, click Start Presenting, and record your next video reading ri
 
 const FORMAT_PROMPT = `Convert the document below into a teleprompter script in Markdown.
 Rules:
-- Use "#" headings for section titles (for example: Intro, Body, CTA).
-- Put each spoken beat — one sentence or short phrase you would read as a single breath — as its own paragraph, separated by a blank line.
+- Use "#" headings to mark each SECTION — a section is one complete spoken unit you record in a single take (for example: a hook, the body, a CTA, or one natural paragraph).
+- Keep each section's text as ONE block (a single paragraph under its heading). This is the default — do NOT split every sentence onto its own line.
+- Each blank-line-separated block becomes its own on-screen segment, so add a blank line inside a section ONLY if you deliberately want a finer segment to click to; otherwise leave the section as one block.
 - Plain Markdown only: headings and paragraphs. No bullet lists, bold, italics, tables, or notes.
 - Output ONLY the formatted script, nothing else.
 
@@ -159,6 +160,12 @@ async function main() {
     }
     check('2b prompt text actually landed on the clipboard (exact)',
       clip === FORMAT_PROMPT, clip.startsWith('__READ_FAILED__') ? clip : `match=${clip === FORMAT_PROMPT} len=${clip.length}`)
+    // 2b-fmt FORMAT-PROMPT UX: section-level by default, NOT per-beat over-segmenting (CEO bug,
+    // card add834d5fd3c). The prompt must tell the AI to keep each section as ONE block and must
+    // NOT instruct splitting every beat/sentence into its own paragraph.
+    check('2b format-prompt is SECTION-level (one block per section, not per-beat over-segmenting)',
+      FORMAT_PROMPT.includes('ONE block') && !/its own paragraph|each spoken beat/.test(FORMAT_PROMPT),
+      `hasBlockGuidance=${FORMAT_PROMPT.includes('ONE block')} hasBeatRule=${/its own paragraph|each spoken beat/.test(FORMAT_PROMPT)}`)
 
     // force the fallback to fail -> must show real failure, no fake "Copied ✓"
     await pageIP.bringToFront()
