@@ -142,7 +142,7 @@ entirely — see §9).
   **solid pure black** (see §11). A build that pulls in `@tsparticles`/`framer-motion`, or
   that renders a starfield/sparkles/shooting-stars behind the text, is **wrong**.
 - **No terminal sender, no script library.** Input is the in-page **paste-Markdown box** +
-  **segments panel** (§8.1/§8.7); there is no `send_roteiros.py` and no saved-scripts UI (§10.3/§8.2).
+  **segments panel** (§8.1/§8.7); there is no `send_scripts.py` and no saved-scripts UI (§10.3/§8.2).
 - **Ports are fixed contracts.** Backend **9000**, frontend **9001**. The frontend derives
   its WS URL as `ws(s)://<page-hostname>:9000/ws` — **9000 is hardcoded in the client**;
   do not make it configurable, do not read it from env.
@@ -212,7 +212,7 @@ all methods, all headers (LAN access from a phone).
 ### 4.1 Health
 `GET /` → **200** `{"status": "ok", "message": "Teleprompter Sync API"}`.
 
-### 4.2 Content API (the roteiro live-swap door)
+### 4.2 Content API (the script live-swap door)
 `POST /api/content`, header **`X-API-Key`** (required), JSON body
 `{"content": "<string>"}`. The `content` field is **required and non-empty** — declare it
 with **`min_length=1`** so the framework's **body validation runs BEFORE the handler** and an
@@ -308,7 +308,7 @@ server must also accept snake_case aliases for robustness, but the canonical wir
 
 | field (camelCase wire) | type | default (new state) | notes |
 |---|---|---|---|
-| `content` | string | the §10.5 sample roteiro text | the script text shown — **never an empty/test placeholder on done** |
+| `content` | string | the §10.5 sample script text | the script text shown — **never an empty/test placeholder on done** |
 | `isPlaying` | bool | `false` | auto-scroll running |
 | `isPresenting` | bool | `false` | controller in presentation view |
 | `playbackRate` | number | `1.0` | speed multiplier, **clamped [0.25, 4]** |
@@ -320,7 +320,7 @@ server must also accept snake_case aliases for robustness, but the canonical wir
 | `countdownSeconds` | int | `3` | pre-roll countdown; UI options {1,3,5} |
 | `speechProfile` | object \| null | default profile (below) | pacing profile, §9 — **server-seeded, no UI** |
 
-> The backend **seeds `content` with the §10.5 sample roteiro** at process start (a real
+> The backend **seeds `content` with the §10.5 sample script** at process start (a real
 > script), so a freshly-opened controller and display are never blank and never show a leftover
 > test string. The controller's own first-load default content (before any `state:sync`) also
 > uses the §10.5 sample (§6).
@@ -693,7 +693,7 @@ in-page take driver (the CEO's core requested flow).
   segment-advance via the §8.4 keys — is the **one** content change that carries `position: 0`;
   an inline edit of the paste box omits `position` and keeps the operator's place, §3/§7.4.)
 - **No terminal sender.** Input is the in-page paste box + this panel; there is **no**
-  `send_roteiros.py` terminal tool (cut — §10). All clients still sync through the same backend
+  `send_scripts.py` terminal tool (cut — §10). All clients still sync through the same backend
   broadcast (`/api/content` + WS remain the sync door for 2-device sync).
 
 ---
@@ -746,52 +746,51 @@ rendering required).
 Example:
 ~~~markdown
 # Intro
-Voce ainda perde tempo decorando o que vai falar?
+Do you still waste time memorizing what to say?
 
-E se o roteiro rolasse na tela, no seu ritmo?
+What if your script scrolled on screen, at your own pace?
 
-## Corpo
-Cola o roteiro, abre o display no celular, e clica em Iniciar.
+## Body
+Paste the script, open the display on your phone, and click Start.
 
 # CTA
-Link na descricao. Comeca hoje.
+Link in the description. Start today.
 ~~~
-→ **4 segments** in 3 sections: Intro → [seg0, seg1], Corpo → [seg2], CTA → [seg3].
+→ **4 segments** in 3 sections: Intro → [seg0, seg1], Body → [seg2], CTA → [seg3].
 
 ### 10.2 Segment order
 Segments are ordered in **document order** (top-to-bottom as pasted): index 0 is the first
 segment; next/prev (§8.4) and the panel list (§8.7) follow that order. No reordering by type.
 
 ### 10.3 No terminal sender (DELETED)
-The old `send_roteiros.py` ENTER-per-take terminal tool is **cut** — do not build it. The page
+The old `send_scripts.py` ENTER-per-take terminal tool is **cut** — do not build it. The page
 **is** the input: paste a script (§8.1) and click a segment / advance with keys (§8.7/§8.4). The
 backend `/api/content` (X-API-Key) door + WS broadcast remain as the 2-device **sync** path and
 are exercised by Verify Layer 1 (§16) — but nothing drives them from a terminal.
 
 ### 10.4 Bundled sample script (`sample-script.md`) — recreate verbatim
 This doubles as the parser fixture (must parse to **exactly 5 segments** in **3 sections**:
-Intro→2, Corpo→2, CTA→1) and the first-load demo. Real copy (Portuguese, the CEO's filming
+Intro→2, Body→2, CTA→1) and the first-load demo. Real copy (English, the CEO's filming
 language), not test strings. Write this file verbatim:
 
 ~~~markdown
 # Intro
-Ola pessoal, bem-vindos a mais um video do canal.
+Hey everyone, welcome back to the channel.
 
-Hoje eu vou te mostrar como gravar os seus videos lendo direto da tela, sem decorar uma unica linha.
+Today I'll show you how to record your videos reading straight from the screen, without memorizing a single line.
 
-# Corpo
-O texto rola no seu ritmo, a palavra atual fica em destaque, e voce so precisa olhar pra camera e falar.
+# Body
+The text scrolls at your pace, the current word stays highlighted, and you just look at the camera and talk.
 
-Se voce se perder, e so pausar, voltar ao segmento certo, e continuar — a gravacao nao se perde.
+If you lose your place, just pause, jump back to the right segment, and keep going — the take is not lost.
 
 # CTA
-Cola o seu roteiro, clica em Iniciar Apresentacao, e grava o proximo video lendo direto da tela.
+Paste your script, click Start Presenting, and record your next video reading right off the screen.
 ~~~
 
 ### 10.5 First-load content (the controller/display open on this)
 On first load the **paste box (§8.1) is prefilled with the full §10.4 sample Markdown**, and the
-backend seeds `state.content` with the **first segment** of that sample (`Ola pessoal, bem-vindos
-a mais um video do canal.`) — **never** an empty box or a test string like
+backend seeds `state.content` with the **first segment** of that sample (`Hey everyone, welcome back to the channel.`) — **never** an empty box or a test string like
 `This is a text from Daniel!`. The segments panel (§8.7) therefore opens showing the 5 parsed
 segments under their 3 sections, with segment 0 current. (Verify asserts first-load content is
 this sample, not the test string or an empty box.)
@@ -1024,7 +1023,7 @@ library**, **no word-scrub bar**, **no** `@tsparticles`/`framer-motion`, **no** 
 ### Step 4: Sample script (§10.4) — no terminal sender
 Write `sample-script.md` verbatim (§10.4) — it is the parser fixture (5 segments / 3 sections)
 and the first-load demo. The segment parser is **frontend** (§8.7, the §10.1 rule); there is no
-`send_roteiros.py` (cut, §10.3).
+`send_scripts.py` (cut, §10.3).
 
 ### Step 5: Start both services (supervised)
 **Reclaim the ports SAFELY first — kill by LISTENING PORT, never by command-string.** A
@@ -1268,7 +1267,7 @@ async def main():
         len(segs) == 5
         and len(secs) == 3
         and by_section.get("Intro") == 2
-        and by_section.get("Corpo") == 2
+        and by_section.get("Body") == 2
         and by_section.get("CTA") == 1
     )
     check("3 sample -> 5 segments / 3 sections", ok3, f"{len(segs)} segs, {len(secs)} secs, {by_section}")
@@ -1285,7 +1284,7 @@ async def main():
             content == seg1_text
             and content != ""
             and content != "This is a text from Daniel!"
-            and "canal" in content
+            and "channel" in content
         )
         check("4 seeded content == first sample segment", ok4, repr(content))
 
@@ -1428,17 +1427,17 @@ const DISP = 'http://127.0.0.1:9001'
 const IPURL = `http://${LAN_IP}:9001`
 
 const SAMPLE_SCRIPT = `# Intro
-Ola pessoal, bem-vindos a mais um video do canal.
+Hey everyone, welcome back to the channel.
 
-Hoje eu vou te mostrar como gravar os seus videos lendo direto da tela, sem decorar uma unica linha.
+Today I'll show you how to record your videos reading straight from the screen, without memorizing a single line.
 
-# Corpo
-O texto rola no seu ritmo, a palavra atual fica em destaque, e voce so precisa olhar pra camera e falar.
+# Body
+The text scrolls at your pace, the current word stays highlighted, and you just look at the camera and talk.
 
-Se voce se perder, e so pausar, voltar ao segmento certo, e continuar — a gravacao nao se perde.
+If you lose your place, just pause, jump back to the right segment, and keep going — the take is not lost.
 
 # CTA
-Cola o seu roteiro, clica em Iniciar Apresentacao, e grava o proximo video lendo direto da tela.`
+Paste your script, click Start Presenting, and record your next video reading right off the screen.`
 
 const FORMAT_PROMPT = `Convert the document below into a teleprompter script in Markdown.
 Rules:
@@ -1519,6 +1518,15 @@ async function main() {
   check('2 segments=5 / sections=3', segCount === 5 && secCount === 3, `segs=${segCount} secs=${secCount}`)
   const hasCopy = await pageA.locator('[data-testid="copy-format-prompt"]').count()
   check('2 copy-format-prompt present', hasCopy === 1)
+  // 2c ENGLISH-ONLY (CEO rule, card add834d5fd3c): the sample content + the rendered section
+  // labels must be English — NOTHING in Portuguese in the SEED or the app.
+  const secLabels = await pageA.$$eval('[data-testid="segment-section"]', (els) => els.map((e) => (e.textContent || '').trim()))
+  const sampleEnglish = boxVal.includes('welcome back to the channel') && boxVal.includes('Start Presenting')
+  const labelsEnglish = secLabels.some((l) => /^body$/i.test(l)) && !secLabels.some((l) => /corpo/i.test(l))
+  const ptMarkers = /(voc[eê]|v[ií]deo do canal|\bcanal\b|roteiro|\bcorpo\b|apresenta[çc]|grava[çc]|descri[çc]|celular|comeca|pra c[âa]mera)/i
+  const noPt = !ptMarkers.test(boxVal) && !secLabels.some((l) => ptMarkers.test(l))
+  check('2c sample + section labels are ENGLISH-only (no Portuguese)', sampleEnglish && labelsEnglish && noPt,
+    `secLabels=${JSON.stringify(secLabels)} sampleEnglish=${sampleEnglish} noPt=${noPt}`)
   // re-parse on fresh paste
   await pageA.fill('[data-testid="script-input"]', '# A\nuno\n\ndois\n\n# B\ntres')
   await sleep(300)
@@ -1595,14 +1603,14 @@ async function main() {
   await sleep(400)
 
   // ---- POINT 3: SEGMENT REAL-TIME ----
-  const seg2Text = 'O texto rola no seu ritmo'
+  const seg2Text = 'The text scrolls at your pace'
   await pageA.locator('[data-testid="segment"][data-segment-index="2"]').click()
   const lat3 = await pollDisplayContent(pageB, seg2Text, 1500)
   const bActive = await activeIndex(pageB)
   check('3 segment click -> display swaps <=1000ms + resets to top', lat3 >= 0 && lat3 <= 1000 && (bActive === 0 || bActive === null),
     `latency=${lat3}ms activeIdx=${bActive}`)
   await pageA.locator('[data-testid="segment"][data-segment-index="3"]').click()
-  const lat3b = await pollDisplayContent(pageB, 'Se voce se perder', 1500)
+  const lat3b = await pollDisplayContent(pageB, 'If you lose your place', 1500)
   check('3 second segment click updates display', lat3b >= 0 && lat3b <= 1000, `latency=${lat3b}ms`)
 
   // backstop guards via fetch
@@ -1879,7 +1887,7 @@ async function main() {
   // ---- POINT 7: SURVIVES A REAL SESSION ----
   // click through several segments, verify display matches each
   let allMatch = true
-  for (const [idx, needle] of [[1, 'Hoje eu vou'], [4, 'Cola o seu roteiro'], [2, 'O texto rola']]) {
+  for (const [idx, needle] of [[1, 'show you how to record'], [4, 'Paste your script'], [2, 'The text scrolls']]) {
     await pageA.locator(`[data-testid="segment"][data-segment-index="${idx}"]`).click()
     const l = await pollDisplayContent(pageB, needle, 1500)
     if (l < 0) allMatch = false
@@ -2176,7 +2184,7 @@ responsive (Exit returns to the editor).
 
 > **Evidence (the CEO verifies by eye):** screenshots of **BOTH** independent clients
 > (A controller + B display) showing the **same synced state** after a controller action AND
-> after a roteiro-part click, **plus a playback frame showing the ORIGINAL highlighted current
+> after a script-part click, **plus a playback frame showing the ORIGINAL highlighted current
 > word — the cyan→violet glowing box on one word, centered** — which is the proof the word-display
 > matches the CEO original.
 

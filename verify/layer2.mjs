@@ -15,17 +15,17 @@ const DISP = 'http://127.0.0.1:9001'
 const IPURL = `http://${LAN_IP}:9001`
 
 const SAMPLE_SCRIPT = `# Intro
-Ola pessoal, bem-vindos a mais um video do canal.
+Hey everyone, welcome back to the channel.
 
-Hoje eu vou te mostrar como gravar os seus videos lendo direto da tela, sem decorar uma unica linha.
+Today I'll show you how to record your videos reading straight from the screen, without memorizing a single line.
 
-# Corpo
-O texto rola no seu ritmo, a palavra atual fica em destaque, e voce so precisa olhar pra camera e falar.
+# Body
+The text scrolls at your pace, the current word stays highlighted, and you just look at the camera and talk.
 
-Se voce se perder, e so pausar, voltar ao segmento certo, e continuar — a gravacao nao se perde.
+If you lose your place, just pause, jump back to the right segment, and keep going — the take is not lost.
 
 # CTA
-Cola o seu roteiro, clica em Iniciar Apresentacao, e grava o proximo video lendo direto da tela.`
+Paste your script, click Start Presenting, and record your next video reading right off the screen.`
 
 const FORMAT_PROMPT = `Convert the document below into a teleprompter script in Markdown.
 Rules:
@@ -106,6 +106,15 @@ async function main() {
   check('2 segments=5 / sections=3', segCount === 5 && secCount === 3, `segs=${segCount} secs=${secCount}`)
   const hasCopy = await pageA.locator('[data-testid="copy-format-prompt"]').count()
   check('2 copy-format-prompt present', hasCopy === 1)
+  // 2c ENGLISH-ONLY (CEO rule, card add834d5fd3c): the sample content + the rendered section
+  // labels must be English — NOTHING in Portuguese in the SEED or the app.
+  const secLabels = await pageA.$$eval('[data-testid="segment-section"]', (els) => els.map((e) => (e.textContent || '').trim()))
+  const sampleEnglish = boxVal.includes('welcome back to the channel') && boxVal.includes('Start Presenting')
+  const labelsEnglish = secLabels.some((l) => /^body$/i.test(l)) && !secLabels.some((l) => /corpo/i.test(l))
+  const ptMarkers = /(voc[eê]|v[ií]deo do canal|\bcanal\b|roteiro|\bcorpo\b|apresenta[çc]|grava[çc]|descri[çc]|celular|comeca|pra c[âa]mera)/i
+  const noPt = !ptMarkers.test(boxVal) && !secLabels.some((l) => ptMarkers.test(l))
+  check('2c sample + section labels are ENGLISH-only (no Portuguese)', sampleEnglish && labelsEnglish && noPt,
+    `secLabels=${JSON.stringify(secLabels)} sampleEnglish=${sampleEnglish} noPt=${noPt}`)
   // re-parse on fresh paste
   await pageA.fill('[data-testid="script-input"]', '# A\nuno\n\ndois\n\n# B\ntres')
   await sleep(300)
@@ -182,14 +191,14 @@ async function main() {
   await sleep(400)
 
   // ---- POINT 3: SEGMENT REAL-TIME ----
-  const seg2Text = 'O texto rola no seu ritmo'
+  const seg2Text = 'The text scrolls at your pace'
   await pageA.locator('[data-testid="segment"][data-segment-index="2"]').click()
   const lat3 = await pollDisplayContent(pageB, seg2Text, 1500)
   const bActive = await activeIndex(pageB)
   check('3 segment click -> display swaps <=1000ms + resets to top', lat3 >= 0 && lat3 <= 1000 && (bActive === 0 || bActive === null),
     `latency=${lat3}ms activeIdx=${bActive}`)
   await pageA.locator('[data-testid="segment"][data-segment-index="3"]').click()
-  const lat3b = await pollDisplayContent(pageB, 'Se voce se perder', 1500)
+  const lat3b = await pollDisplayContent(pageB, 'If you lose your place', 1500)
   check('3 second segment click updates display', lat3b >= 0 && lat3b <= 1000, `latency=${lat3b}ms`)
 
   // backstop guards via fetch
@@ -466,7 +475,7 @@ async function main() {
   // ---- POINT 7: SURVIVES A REAL SESSION ----
   // click through several segments, verify display matches each
   let allMatch = true
-  for (const [idx, needle] of [[1, 'Hoje eu vou'], [4, 'Cola o seu roteiro'], [2, 'O texto rola']]) {
+  for (const [idx, needle] of [[1, 'show you how to record'], [4, 'Paste your script'], [2, 'The text scrolls']]) {
     await pageA.locator(`[data-testid="segment"][data-segment-index="${idx}"]`).click()
     const l = await pollDisplayContent(pageB, needle, 1500)
     if (l < 0) allMatch = false

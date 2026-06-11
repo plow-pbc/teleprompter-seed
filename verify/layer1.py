@@ -102,7 +102,7 @@ async def main():
         len(segs) == 5
         and len(secs) == 3
         and by_section.get("Intro") == 2
-        and by_section.get("Corpo") == 2
+        and by_section.get("Body") == 2
         and by_section.get("CTA") == 1
     )
     check("3 sample -> 5 segments / 3 sections", ok3, f"{len(segs)} segs, {len(secs)} secs, {by_section}")
@@ -119,7 +119,7 @@ async def main():
             content == seg1_text
             and content != ""
             and content != "This is a text from Daniel!"
-            and "canal" in content
+            and "channel" in content
         )
         check("4 seeded content == first sample segment", ok4, repr(content))
 
