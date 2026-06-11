@@ -116,6 +116,34 @@ async function main() {
   const noPt = !ptMarkers.test(boxVal) && !secLabels.some((l) => ptMarkers.test(l))
   check('2c sample + section labels are ENGLISH-only (no Portuguese)', sampleEnglish && labelsEnglish && noPt,
     `secLabels=${JSON.stringify(secLabels)} sampleEnglish=${sampleEnglish} noPt=${noPt}`)
+
+  // 2d FIX1 (CEO, card add834d5fd3c): the editor must FILL the viewport height — the script box +
+  // segments panel reach near the bottom, NOT ~30-40% with a big empty region below.
+  const fill = await pageA.evaluate(() => {
+    const box = document.querySelector('[data-testid="script-input"]')
+    const panel = document.querySelector('[data-testid="segments-panel"]')
+    const bottoms = [box, panel].filter(Boolean).map((el) => el.getBoundingClientRect().bottom)
+    const maxBottom = bottoms.length ? Math.max(...bottoms) : 0
+    return { maxBottom: Math.round(maxBottom), vh: window.innerHeight, frac: +(maxBottom / window.innerHeight).toFixed(2) }
+  })
+  check('2d FIX1 editor script+segments fill the viewport height (no large empty dead space)',
+    fill.frac >= 0.8, JSON.stringify(fill))
+
+  // 2e FIX2 (CEO, card add834d5fd3c): the reading font is ABSOLUTE px — the SAME computed
+  // font-size on a small-phone display and a big display for the same setting (was viewport-relative).
+  {
+    const small = await browser.newContext({ viewport: { width: 390, height: 844 } })
+    const large = await browser.newContext({ viewport: { width: 2560, height: 1440 } })
+    const ps = await small.newPage(); await ps.goto(DISP + '/?mode=display')
+    const pl = await large.newPage(); await pl.goto(DISP + '/?mode=display')
+    await ps.waitForSelector('.teleprompter-word', { timeout: 5000 }).catch(() => {})
+    await pl.waitForSelector('.teleprompter-word', { timeout: 5000 }).catch(() => {})
+    const fOf = (p) => p.evaluate(() => { const el = document.querySelector('.teleprompter-word'); return el ? parseFloat(getComputedStyle(el).fontSize) : null })
+    const fSmall = await fOf(ps); const fLarge = await fOf(pl)
+    check('2e FIX2 reading font is ABSOLUTE px (same on small + large display viewports)',
+      fSmall !== null && fLarge !== null && Math.abs(fSmall - fLarge) <= 1, `small=${fSmall}px large=${fLarge}px`)
+    await small.close(); await large.close()
+  }
   // re-parse on fresh paste
   await pageA.fill('[data-testid="script-input"]', '# A\nuno\n\ndois\n\n# B\ntres')
   await sleep(300)

@@ -260,7 +260,7 @@ the current state** as a `state:sync` frame. Then loop reading text frames; each
   add834d5fd3c — POINT-5 take-swap-mid-play, surfaced by the pinned uniform Verify on a fresh
   node; an `{isPlaying:false, position:0}` arriving while `is_playing` was true previously
   failed to reset, losing the segment swap.)
-- `fontSizeVh`, `backgroundColor`, `textColor`, `playbackRate`, `speechProfile` → set
+- `fontSizePx`, `backgroundColor`, `textColor`, `playbackRate`, `speechProfile` → set
   directly when present.
 - `wpm` → if present, set it; **else if** `playbackRate` or `speechProfile` changed this
   message, recompute `wpm` from the profile (§4.5).
@@ -314,7 +314,7 @@ server must also accept snake_case aliases for robustness, but the canonical wir
 | `playbackRate` | number | `1.0` | speed multiplier, **clamped [0.25, 4]** |
 | `wpm` | number | `124` (derived §4.5; store the int) | compat only; recompute on rate/profile change |
 | `position` | number | `0.0` | **word index** (not pixels) |
-| `fontSizeVh` | number | `4.5` | font size as **% of viewport min (vmin)**; UI range [2, 15] |
+| `fontSizePx` | number | `48` | font size in **ABSOLUTE CSS px** — identical on every device/viewport (§7.2); UI range [22, 160] |
 | `backgroundColor` | string | `"#000000"` | hex — presentation forces pure black |
 | `textColor` | string | `"#ffffff"` | hex |
 | `countdownSeconds` | int | `3` | pre-roll countdown; UI options {1,3,5} |
@@ -395,12 +395,17 @@ placeholder text `Paste or type your script here...` (this is only reachable if 
 the script; on done the content is never empty — §5). Punctuation stays attached to its word
 (do not split on apostrophes/hyphens).
 
-### 7.2 Font size + reading surface (the device-consistent formula — pin it)
+### 7.2 Font size + reading surface (ABSOLUTE px — identical on every device — pin it)
 ```
-deviceMultiplier = devicePixelRatio > 2.5 ? 3.0 : devicePixelRatio > 1.5 ? 2.0 : 1.0
-viewportMin      = min(window.innerWidth, window.innerHeight)
-fontSizePx       = (settings.fontSizeVh / 100) * viewportMin * deviceMultiplier
+// ABSOLUTE CSS px: the size the operator sets renders at the SAME size on the controller AND on
+// every display, regardless of the display device's screen size. A small phone connected as a
+// display shows the SAME large font as a big monitor (fewer words fit — that's expected and fine).
+// A CSS px is already device/DPR-independent, so do NOT scale by viewport or devicePixelRatio.
+fontSizePx = settings.fontSizePx      // e.g. 48 (default); NOT relative to viewport or DPR
 ```
+(CEO bug, card add834d5fd3c: the old `(fontSizeVh/100) * viewportMin * deviceMultiplier` was
+viewport-relative, so a small phone display showed a small font even at max — you could only get a
+big font on a big screen. Decoupled: the size is now absolute px, consistent across all screens.)
 The reading surface is a **solid pure-black** screen (`background: #000000`, no layers behind
 the text). The scroll container uses `font-size: fontSizePx`, **`line-height: 1.8`**, a **real,
 readable teleprompter font** (`font-family: 'Inter', 'Helvetica Neue', system-ui,
@@ -500,14 +505,22 @@ is **no library, no save/open/delete** — §8.2). Top to bottom:
   "Copy failed — select & copy manually") — **NEVER flash a fake "Copied ✓" when nothing was
   copied** (the original bug: a swallowed `catch` that still set success). The unselectable label
   text used elsewhere must not block the textarea selection.
-- **Segments panel** (§8.7) — the pasted script parsed into **clickable segments** (grouped
-  under their section headings). **Clicking a segment makes it the current line on every
-  connected display, live.** This is the in-page take driver — done-gating (J20).
+- **Segments panel** (§8.7, `data-testid="segments-panel"`) — the pasted script parsed into
+  **clickable segments** (grouped under their section headings). **Clicking a segment makes it the
+  current line on every connected display, live.** This is the in-page take driver — done-gating (J20).
 - **Primary action: a single, always-enabled `Start Presenting` button** (full-width, accent
   gradient). **There is NO calibration step, NO "Speed Training" panel, NO gate.** Clicking it
   enters the presentation view immediately. The pacing engine is the §5 fixed profile, already
   loaded. (Removing the calibration gate is **load-bearing** — the old build's fake "🎙 Record
   / Calibrate" that blocked Start Presenting is **cut entirely**; do not reintroduce it.)
+- **LAYOUT — FILL the viewport height (NO dead space) — FIXED.** The editor is a **full-height
+  column** (`height: 100vh`, flex column): the header and the `Start Presenting` button are
+  fixed-height; the **paste box (`script-input`) and the segments panel (`segments-panel`) GROW to
+  fill ALL remaining vertical space** (`flex: 1`) — whether stacked or side-by-side — and each
+  scrolls **internally only when its own content overflows** the now-full-height box. There must be
+  **NO large empty region** below them; the script + segments area occupies the full available
+  height. (CEO bug, card add834d5fd3c: the boxes used only ~30-40% of the height with ~60% empty
+  dead space below and scrollbars on the small boxes.)
 
 ### 8.2 No script library — one pasted script only (DELETED by CEO)
 There is **NO script library**: no save, no "new script", no rename, no delete, no list of saved
@@ -549,14 +562,14 @@ paste replaces it; nothing is stored or named.
     labels: `0.25× · 1× · 4×`. The rate is **clamped to [0.25, 4]** everywhere (a single
     `clampPlaybackRate` used on every entry point). `±` nudge buttons and ArrowUp/ArrowDown
     nudge the **rate** linearly by **±0.1** then re-clamp.
-  - **TEXT SIZE slider** — piecewise-linear around the default: **MIN 2, DEFAULT 4.5, MAX 15**
-    (vmin %, internal). Normalized `n ∈ [-1,1]` maps DEFAULT at 0, with the **exact**
-    two-segment map: `n ≥ 0 → size = DEFAULT + n*(MAX-DEFAULT)`; `n < 0 → size = DEFAULT +
-    n*(DEFAULT-MIN)` (so `n=1→15`, `n=0→4.5`, `n=-1→2`). Snap the result to **0.1**. **The
-    readout is a friendly percentage relative to default, NOT raw "vmin" jargon:** `pct =
-    round(size / 4.5 * 100)` → readout `<pct>%`; so DEFAULT reads **`100%`**, MIN reads
-    **`44%`**, MAX reads **`333%`**. Tick labels `44% · 100% · 333%`. Label the control
-    `TEXT SIZE`.
+  - **TEXT SIZE slider** — sets an **ABSOLUTE px** size (§7.2), identical on every device:
+    **MIN 22, DEFAULT 48, MAX 160** (CSS px). Normalized `n ∈ [-1,1]` maps DEFAULT at 0, with the
+    **exact** two-segment map: `n ≥ 0 → px = DEFAULT + n*(MAX-DEFAULT)`; `n < 0 → px = DEFAULT +
+    n*(DEFAULT-MIN)` (so `n=1→160`, `n=0→48`, `n=-1→22`). Snap to **1 px**. **The readout is a
+    friendly percentage relative to default:** `pct = round(px / 48 * 100)` → DEFAULT reads
+    **`100%`**, MIN reads **`46%`**, MAX reads **`333%`**. Tick labels `46% · 100% · 333%`. Label
+    the control `TEXT SIZE`. (The size is **absolute px, NOT vmin** — a small phone display shows
+    the same px as a big monitor, per §7.2.)
   - **Countdown** segmented control — options **{1, 3, 5}** seconds, default **3**.
   - **Mirror** toggle — flips the reading surface horizontally for glass rigs (§8.5); also
     available here on the controller's presentation view (default off, device-local).
@@ -584,6 +597,7 @@ three nodes' self-authored harnesses diverged into 42/41/45):
 | Copy-formatting-prompt button | `data-testid="copy-format-prompt"` (+ `data-copy-state`) | editor (§8.1) |
 | each clickable segment | `data-testid="segment"` (+ `data-segment-index="<i>"`) | segments panel (§8.7) |
 | each section-heading label | `data-testid="segment-section"` | segments panel (§8.7) |
+| segments panel container (fills height) | `data-testid="segments-panel"` | editor (§8.1/§8.7) |
 | Start Presenting button | `data-testid="start-presenting"` | editor (§8.1) |
 | Online/Offline pill | `data-testid="status-pill"` | controller header (§8.1/§8.3) |
 | Play/Pause button | `data-testid="play-toggle"` | presentation (§8.3) |
@@ -1529,6 +1543,34 @@ async function main() {
   const noPt = !ptMarkers.test(boxVal) && !secLabels.some((l) => ptMarkers.test(l))
   check('2c sample + section labels are ENGLISH-only (no Portuguese)', sampleEnglish && labelsEnglish && noPt,
     `secLabels=${JSON.stringify(secLabels)} sampleEnglish=${sampleEnglish} noPt=${noPt}`)
+
+  // 2d FIX1 (CEO, card add834d5fd3c): the editor must FILL the viewport height — the script box +
+  // segments panel reach near the bottom, NOT ~30-40% with a big empty region below.
+  const fill = await pageA.evaluate(() => {
+    const box = document.querySelector('[data-testid="script-input"]')
+    const panel = document.querySelector('[data-testid="segments-panel"]')
+    const bottoms = [box, panel].filter(Boolean).map((el) => el.getBoundingClientRect().bottom)
+    const maxBottom = bottoms.length ? Math.max(...bottoms) : 0
+    return { maxBottom: Math.round(maxBottom), vh: window.innerHeight, frac: +(maxBottom / window.innerHeight).toFixed(2) }
+  })
+  check('2d FIX1 editor script+segments fill the viewport height (no large empty dead space)',
+    fill.frac >= 0.8, JSON.stringify(fill))
+
+  // 2e FIX2 (CEO, card add834d5fd3c): the reading font is ABSOLUTE px — the SAME computed
+  // font-size on a small-phone display and a big display for the same setting (was viewport-relative).
+  {
+    const small = await browser.newContext({ viewport: { width: 390, height: 844 } })
+    const large = await browser.newContext({ viewport: { width: 2560, height: 1440 } })
+    const ps = await small.newPage(); await ps.goto(DISP + '/?mode=display')
+    const pl = await large.newPage(); await pl.goto(DISP + '/?mode=display')
+    await ps.waitForSelector('.teleprompter-word', { timeout: 5000 }).catch(() => {})
+    await pl.waitForSelector('.teleprompter-word', { timeout: 5000 }).catch(() => {})
+    const fOf = (p) => p.evaluate(() => { const el = document.querySelector('.teleprompter-word'); return el ? parseFloat(getComputedStyle(el).fontSize) : null })
+    const fSmall = await fOf(ps); const fLarge = await fOf(pl)
+    check('2e FIX2 reading font is ABSOLUTE px (same on small + large display viewports)',
+      fSmall !== null && fLarge !== null && Math.abs(fSmall - fLarge) <= 1, `small=${fSmall}px large=${fLarge}px`)
+    await small.close(); await large.close()
+  }
   // re-parse on fresh paste
   await pageA.fill('[data-testid="script-input"]', '# A\nuno\n\ndois\n\n# B\ntres')
   await sleep(300)
