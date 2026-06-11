@@ -29,9 +29,9 @@ Paste your script, click Start Presenting, and record your next video reading ri
 
 const FORMAT_PROMPT = `Convert the document below into a teleprompter script in Markdown.
 Rules:
-- Use "#" headings to mark each SECTION — a section is one complete spoken unit you record in a single take (for example: a hook, the body, a CTA, or one natural paragraph).
-- Keep each section's text as ONE block (a single paragraph under its heading). This is the default — do NOT split every sentence onto its own line.
-- Each blank-line-separated block becomes its own on-screen segment, so add a blank line inside a section ONLY if you deliberately want a finer segment to click to; otherwise leave the section as one block.
+- Use "#" headings to mark each SECTION — a section is one complete unit you record in a single take (for example: a hook, the body, a CTA).
+- Within a section, put each spoken line on its OWN line using a single line break. Lines within a section stay in the SAME on-screen segment (stacked for pacing) — this is encouraged.
+- A blank line starts a NEW segment. Do NOT put a blank line between lines of the same section — that wrongly splits one piece into separate segments. Use a blank line ONLY to begin a new section (normally with a new "#").
 - Plain Markdown only: headings and paragraphs. No bullet lists, bold, italics, tables, or notes.
 - Output ONLY the formatted script, nothing else.
 
@@ -163,9 +163,15 @@ async function main() {
     // 2b-fmt FORMAT-PROMPT UX: section-level by default, NOT per-beat over-segmenting (CEO bug,
     // card add834d5fd3c). The prompt must tell the AI to keep each section as ONE block and must
     // NOT instruct splitting every beat/sentence into its own paragraph.
-    check('2b format-prompt is SECTION-level (one block per section, not per-beat over-segmenting)',
-      FORMAT_PROMPT.includes('ONE block') && !/its own paragraph|each spoken beat/.test(FORMAT_PROMPT),
-      `hasBlockGuidance=${FORMAT_PROMPT.includes('ONE block')} hasBeatRule=${/its own paragraph|each spoken beat/.test(FORMAT_PROMPT)}`)
+    // The format-prompt must encode the PRECISE rule (CEO clarification, card add834d5fd3c):
+    // single line break = same segment (lines on their own line within a section, encouraged);
+    // a BLANK LINE = a NEW segment (use only to start a new section). NOT per-beat over-segmenting.
+    const fpOwnLine = /own line/i.test(FORMAT_PROMPT) && /single line break/i.test(FORMAT_PROMPT)
+    const fpBlankNewSeg = /blank line/i.test(FORMAT_PROMPT) && /new segment/i.test(FORMAT_PROMPT)
+    const fpNoOverSeg = !/its own paragraph|each spoken beat/i.test(FORMAT_PROMPT)
+    check('2b format-prompt encodes single-newline=same-segment vs blank-line=new-segment',
+      fpOwnLine && fpBlankNewSeg && fpNoOverSeg,
+      `ownLine=${fpOwnLine} blankNewSeg=${fpBlankNewSeg} noOverSeg=${fpNoOverSeg}`)
 
     // force the fallback to fail -> must show real failure, no fake "Copied ✓"
     await pageIP.bringToFront()
