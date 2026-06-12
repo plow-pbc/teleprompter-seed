@@ -1187,7 +1187,7 @@ node verify/probe.mjs                     # 3 regression probes (parser / Space 
 
 ### `verify/layer1.py` — protocol harness (write verbatim)
 > **Pinned & drift-guarded.** This inlined block is **byte-identical to `verify/layer1.py`** in
-> this repo — **243 lines, sha256 `c1fb8ef0cdf134bc…`**. **Do NOT hand-edit either copy
+> this repo — **255 lines, sha256 `b98d2ddeb22c42ec…`**. **Do NOT hand-edit either copy
 > independently:** the inline copy and the repo file MUST stay byte-identical (that sameness is the
 > cross-node consistency guarantee — §16). To change the harness, edit `verify/layer1.py`, re-inline
 > it here verbatim, and update this line's line-count + sha256.
@@ -1197,6 +1197,7 @@ node verify/probe.mjs                     # 3 regression probes (parser / Space 
 import asyncio
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -1211,6 +1212,16 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SAMPLE = os.path.join(HERE, "..", "sample-script.md")
 
 results = []
+
+
+def free_port():
+    """Ask the OS for a free TCP port on loopback (avoid a hardcoded port that can
+    collide with another process on a busy host)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
 
 
 def check(name, ok, detail=""):
@@ -1342,8 +1353,9 @@ async def main():
         env["CONTENT_API_KEY"] = ""
         env["LOCAL_MODE"] = "true"
         backend_dir = os.path.join(HERE, "..", "backend")
+        port = free_port()
         proc = subprocess.Popen(
-            ["uv", "run", "uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", "9123"],
+            ["uv", "run", "uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", str(port)],
             cwd=backend_dir,
             env={**env, "CONTENT_API_KEY": ""},
             stdout=subprocess.DEVNULL,
@@ -1353,7 +1365,7 @@ async def main():
         up = False
         for _ in range(30):
             try:
-                s, _b = http("GET", "http://127.0.0.1:9123/")
+                s, _b = http("GET", f"http://127.0.0.1:{port}/")
                 if s == 200:
                     up = True
                     break
@@ -1363,7 +1375,7 @@ async def main():
         if up:
             s, _b = http(
                 "POST",
-                "http://127.0.0.1:9123/api/content",
+                f"http://127.0.0.1:{port}/api/content",
                 {"X-API-Key": "anything", "Content-Type": "application/json"},
                 json.dumps({"content": "x"}),
             )

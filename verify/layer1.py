@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -17,6 +18,16 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SAMPLE = os.path.join(HERE, "..", "sample-script.md")
 
 results = []
+
+
+def free_port():
+    """Ask the OS for a free TCP port on loopback (avoid a hardcoded port that can
+    collide with another process on a busy host)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
 
 
 def check(name, ok, detail=""):
@@ -148,8 +159,9 @@ async def main():
         env["CONTENT_API_KEY"] = ""
         env["LOCAL_MODE"] = "true"
         backend_dir = os.path.join(HERE, "..", "backend")
+        port = free_port()
         proc = subprocess.Popen(
-            ["uv", "run", "uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", "9123"],
+            ["uv", "run", "uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", str(port)],
             cwd=backend_dir,
             env={**env, "CONTENT_API_KEY": ""},
             stdout=subprocess.DEVNULL,
@@ -159,7 +171,7 @@ async def main():
         up = False
         for _ in range(30):
             try:
-                s, _b = http("GET", "http://127.0.0.1:9123/")
+                s, _b = http("GET", f"http://127.0.0.1:{port}/")
                 if s == 200:
                     up = True
                     break
@@ -169,7 +181,7 @@ async def main():
         if up:
             s, _b = http(
                 "POST",
-                "http://127.0.0.1:9123/api/content",
+                f"http://127.0.0.1:{port}/api/content",
                 {"X-API-Key": "anything", "Content-Type": "application/json"},
                 json.dumps({"content": "x"}),
             )
