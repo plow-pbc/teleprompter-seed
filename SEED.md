@@ -80,7 +80,7 @@
 
 ---
 
-## 1. Purpose & context
+## 1. Goal — Purpose & context
 
 **TPFlow Teleprompter** is the CEO's recording rig, packaged. The CEO records short-form ad
 videos: a phone sits on the camera showing the teleprompter **display**; the laptop runs the
@@ -942,6 +942,15 @@ present a menu, do NOT wait for a human** — resolve each row in-line and run s
 `SEED_RESULT=DONE` (or one `BLOCKED_REASON=` only if a resolve is genuinely impossible, e.g. no
 network). Every dependency here is **install-if-missing**, unconditionally.
 
+> **Format-1 variance — intentional: there is NO Step-0 Interview.** Canonical SEED.md
+> format-1 (seedlab `SEED-FORMAT.md`) makes a Step-0 *Interview* the mandatory and sole
+> interactive point. This seed **deliberately replaces that Interview with autonomous
+> auto-resolve**: a fresh substrate runs unattended with **no human to interview**, so every
+> `## Inputs` row is machine-resolvable (install / generate / default) and the canonical `ask`
+> column is replaced by an `auto-resolve` column. This is a conscious departure from format-1's
+> Interview rule — **not an omission** — and it is what makes the seed one-shot a fresh node with
+> zero human turns (see §14 Step 0).
+
 | name | detect | auto-resolve (do this, never ask) |
 |---|---|---|
 | `uv` on PATH | `command -v uv` | If missing: `curl -LsSf https://astral.sh/uv/install.sh \| sh`, then `export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"` and re-check. uv manages the backend env + Python ≥3.11 (downloads Python itself). **Install it — do not offer pip/venv as an alternative menu.** |
@@ -1177,12 +1186,18 @@ node verify/probe.mjs                     # 3 regression probes (parser / Space 
 ```
 
 ### `verify/layer1.py` — protocol harness (write verbatim)
+> **Pinned & drift-guarded.** This inlined block is **byte-identical to `verify/layer1.py`** in
+> this repo — **255 lines, sha256 `b98d2ddeb22c42ec…`**. **Do NOT hand-edit either copy
+> independently:** the inline copy and the repo file MUST stay byte-identical (that sameness is the
+> cross-node consistency guarantee — §16). To change the harness, edit `verify/layer1.py`, re-inline
+> it here verbatim, and update this line's line-count + sha256.
 ~~~~python
 #!/usr/bin/env python3
 """Layer 1 — protocol harness (SEED.md §16). Exit 0 iff all pass."""
 import asyncio
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -1197,6 +1212,16 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SAMPLE = os.path.join(HERE, "..", "sample-script.md")
 
 results = []
+
+
+def free_port():
+    """Ask the OS for a free TCP port on loopback (avoid a hardcoded port that can
+    collide with another process on a busy host)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
 
 
 def check(name, ok, detail=""):
@@ -1328,8 +1353,9 @@ async def main():
         env["CONTENT_API_KEY"] = ""
         env["LOCAL_MODE"] = "true"
         backend_dir = os.path.join(HERE, "..", "backend")
+        port = free_port()
         proc = subprocess.Popen(
-            ["uv", "run", "uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", "9123"],
+            ["uv", "run", "uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", str(port)],
             cwd=backend_dir,
             env={**env, "CONTENT_API_KEY": ""},
             stdout=subprocess.DEVNULL,
@@ -1339,7 +1365,7 @@ async def main():
         up = False
         for _ in range(30):
             try:
-                s, _b = http("GET", "http://127.0.0.1:9123/")
+                s, _b = http("GET", f"http://127.0.0.1:{port}/")
                 if s == 200:
                     up = True
                     break
@@ -1349,7 +1375,7 @@ async def main():
         if up:
             s, _b = http(
                 "POST",
-                "http://127.0.0.1:9123/api/content",
+                f"http://127.0.0.1:{port}/api/content",
                 {"X-API-Key": "anything", "Content-Type": "application/json"},
                 json.dumps({"content": "x"}),
             )
@@ -1424,6 +1450,11 @@ if __name__ == "__main__":
 ~~~~
 
 ### `verify/layer2.mjs` — the REAL two-context USER-DRIVE = the §16b 7-point bar (write verbatim)
+> **Pinned & drift-guarded.** This inlined block is **byte-identical to `verify/layer2.mjs`** in
+> this repo — **574 lines, sha256 `e40e1d604f484a7e…`**. **Do NOT hand-edit either copy
+> independently:** the inline copy and the repo file MUST stay byte-identical (that sameness is the
+> cross-node consistency guarantee — §16). To change the harness, edit `verify/layer2.mjs`, re-inline
+> it here verbatim, and update this line's line-count + sha256.
 ~~~~js
 // Layer 2 — the REAL USER-DRIVE (SEED.md §16b). Drives the app like a human
 // across two independent browser contexts and measures the 7-point bar.
@@ -2002,6 +2033,12 @@ main().catch((e) => {
 ~~~~
 
 ### `verify/probe.mjs` — 3 pinned REGRESSION PROBES (write verbatim)
+> **Pinned & drift-guarded.** This inlined block is **byte-identical to `verify/probe.mjs`** in
+> this repo — **142 lines, sha256 `64de24c3eb55a0d0…`**. **Do NOT hand-edit either copy
+> independently:** the inline copy and the repo file MUST stay byte-identical (that sameness is the
+> cross-node consistency guarantee — §16). To change the harness, edit `verify/probe.mjs`, re-inline
+> it here verbatim, and update this line's line-count + sha256.
+>
 > Locks the three behaviors this validation surfaced so they can never silently regress or
 > false-fail again: **(1) parser** — a heading immediately followed by text with no blank line
 > (`# Intro\nuno`) must parse as section+segment, not collapse; **(2) Space single-toggle** —
